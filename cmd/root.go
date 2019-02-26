@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/pierre-emmanuelJ/iptv-proxy/cmd/routes"
+	"github.com/pierre-emmanuelJ/iptv-proxy/routes"
 
 	"github.com/jamesnetherton/m3u"
 	homedir "github.com/mitchellh/go-homedir"
