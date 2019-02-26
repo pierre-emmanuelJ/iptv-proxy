@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/config"
+
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/routes"
 
 	"github.com/jamesnetherton/m3u"
@@ -26,12 +28,15 @@ var rootCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
-		conf := routes.Configuration{
-			Hostname: viper.GetString("hostname"),
-			Port:     viper.GetInt64("port"),
+		conf := &config.ProxyConfig{
+			Playlist: &playlist,
+			HostConfig: &config.HostConfiguration{
+				Hostname: viper.GetString("hostname"),
+				Port:     viper.GetInt64("port"),
+			},
 		}
 
-		if e := routes.Serve(&playlist, conf); e != nil {
+		if e := routes.Serve(conf); e != nil {
 			log.Fatal(e)
 		}
 	},
