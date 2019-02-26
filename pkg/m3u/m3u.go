@@ -9,6 +9,7 @@ import (
 )
 
 // Marshall m3u.playlist struct to m3u file
+// And replace original track url by proxy url
 func Marshall(p *m3u.Playlist, config *config.HostConfiguration) (string, error) {
 	result := "#EXTM3U\n"
 	for _, track := range p.Tracks {

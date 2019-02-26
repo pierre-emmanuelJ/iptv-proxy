@@ -8,8 +8,7 @@ type HostConfiguration struct {
 	Port     int64
 }
 
-// ProxyConfig Contain original m3u playlist and HostConfiguration,
-// if track is not nil current track selected in playlist
+// ProxyConfig Contain original m3u playlist and HostConfiguration
 type ProxyConfig struct {
 	Playlist   *m3u.Playlist
 	HostConfig *HostConfiguration
