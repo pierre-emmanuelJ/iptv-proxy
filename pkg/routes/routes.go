@@ -34,7 +34,6 @@ func Serve(playlist *m3u.Playlist, conf Configuration) error {
 
 // Routes adds the routes for the app to the RouterGroup r
 func Routes(playlist *m3u.Playlist, conf Configuration, r *gin.RouterGroup) {
-
 	p := ProxyPlaylist{playlist, nil, &conf}
 
 	r.GET("/m3u", p.getM3U)
@@ -50,7 +49,6 @@ func Routes(playlist *m3u.Playlist, conf Configuration, r *gin.RouterGroup) {
 }
 
 func (p *ProxyPlaylist) reversProxy(c *gin.Context) {
-
 	rpURL, err := url.Parse(p.track.URI)
 	if err != nil {
 		log.Fatal(err)
