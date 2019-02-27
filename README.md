@@ -51,7 +51,15 @@ http://poxyserver.com:8080/15/test/4
 
 ## Installation
 
-### Prerequisite
+### Without Docker
+
+```
+TODO
+```
+
+### With Docker
+
+#### Prerequisite
 
  - Add an m3u URL in `docker-compose.yml` or add local file in `iptv` folder
  - `HOSTNAME` and `PORT` to expose
@@ -71,7 +79,7 @@ http://poxyserver.com:8080/15/test/4
       HOSTNAME: localhost
 ```
 
-### Start
+#### Start
 
 ```
 % docker-compose up -d
