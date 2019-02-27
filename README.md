@@ -26,6 +26,15 @@ http://iptvexample.net:1234/15/test/4
 What proxy IPTV do
  - convert chanels url to new endpoints
  - convert original m3u file with new routes
+
+start proxy server example:
+```Bash
+poxy-server --m3u-url http://iptvexample.net/iptvm3ufile.m3u \
+            --port 8080 \ # port you want to expose your proxy
+            --hostname proxyserver.com # hostname of your machine running this proxy
+```
+
+
  - give you the m3u file on a specific endpoint `http://poxyserver.com:8080/iptv.m3u`
 
 ```m3u
