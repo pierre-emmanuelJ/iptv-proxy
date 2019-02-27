@@ -53,8 +53,15 @@ http://poxyserver.com:8080/15/test/4
 
 ### Without Docker
 
+Download lasted [release](https://github.com/pierre-emmanuelJ/iptv-proxy/releases)
 ```
-TODO
+% iptv-proxy --m3u-url http://example.com/iptv.m3u --port 8080 --hostname poxyexample.com
+```
+Or
+
+```
+% go install
+% iptv-proxy --m3u-url http://example.com/iptv.m3u --port 8080 --hostname poxyexample.com
 ```
 
 ### With Docker
