@@ -72,7 +72,13 @@ func (p *proxy) reverseProxy(c *gin.Context) {
 }
 
 func (p *proxy) getM3U(c *gin.Context) {
-	result, err := proxyM3U.Marshall(p.Playlist, p.HostConfig)
+	playlist, err := proxyM3U.ReplaceURL(*p.Playlist, p.HostConfig)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	result, err := proxyM3U.Marshall(playlist)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
 		return

@@ -9,8 +9,7 @@ import (
 )
 
 // Marshall m3u.playlist struct to m3u file
-// And replace original track url by proxy url
-func Marshall(p *m3u.Playlist, config *config.HostConfiguration) (string, error) {
+func Marshall(p *m3u.Playlist) (string, error) {
 	result := "#EXTM3U\n"
 	for _, track := range p.Tracks {
 		result += "#EXTINF:"
@@ -22,19 +21,27 @@ func Marshall(p *m3u.Playlist, config *config.HostConfiguration) (string, error)
 			}
 			result += fmt.Sprintf("%s=%q ", track.Tags[i].Name, track.Tags[i].Value)
 		}
-		result += fmt.Sprintf("%s\n", track.Name)
 
+		result += fmt.Sprintf("%s\n%s\n", track.Name, track.URI)
+	}
+	return result, nil
+}
+
+// ReplaceURL replace original playlist url by proxy url
+func ReplaceURL(playlist m3u.Playlist, config *config.HostConfiguration) (*m3u.Playlist, error) {
+	for i, track := range playlist.Tracks {
 		oriURL, err := url.Parse(track.URI)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 
 		destURL, err := url.Parse(fmt.Sprintf("http://%s:%d%s", config.Hostname, config.Port, oriURL.RequestURI()))
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 
-		result += fmt.Sprintf("%s\n", destURL.String())
+		playlist.Tracks[i].URI = destURL.String()
 	}
-	return result, nil
+
+	return &playlist, nil
 }
