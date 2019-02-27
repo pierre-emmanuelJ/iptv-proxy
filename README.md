@@ -29,7 +29,7 @@ What proxy IPTV do
 
 start proxy server example:
 ```Bash
-poxy-server --m3u-url http://iptvexample.net/iptvm3ufile.m3u \
+poxy-server --m3u-url http://iptvexample.net/iptvm3ufile.m3u \ # or local m3u file
             --port 8080 \ # port you want to expose your proxy
             --hostname proxyserver.com # hostname of your machine running this proxy
 ```
