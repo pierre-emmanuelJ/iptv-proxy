@@ -77,5 +77,6 @@ func (p *proxy) getM3U(c *gin.Context) {
 		c.AbortWithError(http.StatusInternalServerError, err)
 		return
 	}
-	c.Data(http.StatusOK, "text/plain", []byte(result))
+	c.Header("Content-Disposition", "attachment; filename=\"iptv.m3u\"")
+	c.Data(http.StatusOK, "application/octet-stream", []byte(result))
 }
