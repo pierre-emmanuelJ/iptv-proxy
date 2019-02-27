@@ -10,8 +10,8 @@ services:
       - ./iptv:/root/iptv
     container_name: "iptv-proxy"
     restart: on-failure
-    # have to be the same as ENV variable PORT
     ports:
+       # have to be the same as ENV variable PORT
       - 8080:8080
     environment:
       # if you are using m3u remote file

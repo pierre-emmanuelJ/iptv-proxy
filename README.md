@@ -2,7 +2,7 @@
 
 ## Description
 
-Iptv Proxy is a tool to convert an iptv m3u file
+Iptv Proxy is a project to convert an iptv m3u file
 
 into a web proxy server And give a new m3u file
 
@@ -51,4 +51,31 @@ http://poxyserver.com:8080/15/test/4
 
 ## Installation
 
-TODO
+### Prerequisite
+
+ - Add an m3u URL in `docker-compose.yml` or add local file in `iptv` folder
+ - `HOSTNAME` and `PORT` to expose
+ - Expose same container port as the `PORT` ENV variable 
+
+```Yaml
+ ports:
+       # have to be the same as ENV variable PORT
+      - 8080:8080
+ environment:
+      # if you are using m3u remote file
+      # M3U_URL: https://example.com/iptvfile.m3u
+      M3U_URL: /root/iptv/iptv.m3u
+      # Port to expose the IPTVs endpoints
+      PORT: 8080
+      # Hostname or IP to expose the IPTVs endpoints (for machine not for docker)
+      HOSTNAME: localhost
+```
+
+### Start
+
+```
+% docker-compose up -d
+```
+
+**ENJOY!**
+
