@@ -38,7 +38,7 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup) {
 		nil,
 	}
 
-	r.GET("/iptv.m3u", p.getM3U)
+	r.GET("/iptv.m3u", p.authenticate, p.getM3U)
 
 	for i, track := range proxyConfig.Playlist.Tracks {
 		oriURL, err := url.Parse(track.URI)
@@ -49,7 +49,7 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup) {
 			nil,
 			&proxyConfig.Playlist.Tracks[i],
 		}
-		r.GET(oriURL.RequestURI(), tmp.reverseProxy)
+		r.GET(oriURL.RequestURI(), p.authenticate, tmp.reverseProxy)
 	}
 }
 
@@ -72,7 +72,7 @@ func (p *proxy) reverseProxy(c *gin.Context) {
 }
 
 func (p *proxy) getM3U(c *gin.Context) {
-	playlist, err := proxyM3U.ReplaceURL(p.Playlist, p.HostConfig)
+	playlist, err := proxyM3U.ReplaceURL(p.ProxyConfig)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
 		return
@@ -85,4 +85,22 @@ func (p *proxy) getM3U(c *gin.Context) {
 	}
 	c.Header("Content-Disposition", "attachment; filename=\"iptv.m3u\"")
 	c.Data(http.StatusOK, "application/octet-stream", []byte(result))
+}
+
+// AuthRequest handle auth credentials
+type AuthRequest struct {
+	User     string `form:"user" binding:"required"`
+	Password string `form:"password" binding:"required"`
+} // XXX very unsafe
+
+func (p *proxy) authenticate(ctx *gin.Context) {
+	var authReq AuthRequest
+	if err := ctx.Bind(&authReq); err != nil {
+		ctx.AbortWithError(http.StatusBadRequest, err)
+		return
+	}
+	//XXX very unsafe
+	if p.ProxyConfig.User != authReq.User || p.ProxyConfig.Password != authReq.Password {
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+	}
 }

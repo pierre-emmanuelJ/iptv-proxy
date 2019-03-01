@@ -12,4 +12,6 @@ type HostConfiguration struct {
 type ProxyConfig struct {
 	Playlist   *m3u.Playlist
 	HostConfig *HostConfiguration
+	//XXX Very unsafe
+	User, Password string
 }

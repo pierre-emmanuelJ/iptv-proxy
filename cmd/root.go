@@ -34,6 +34,8 @@ var rootCmd = &cobra.Command{
 				Hostname: viper.GetString("hostname"),
 				Port:     viper.GetInt64("port"),
 			},
+			User:     viper.GetString("user"),
+			Password: viper.GetString("password"),
 		}
 
 		if e := routes.Serve(conf); e != nil {
@@ -61,6 +63,8 @@ func init() {
 	rootCmd.Flags().String("m3u-url", "http://example.com/iptv.m3u", "iptv m3u file")
 	rootCmd.Flags().Int64("port", 8080, "Port to expose the IPTVs endpoints")
 	rootCmd.Flags().String("hostname", "", "Hostname or IP to expose the IPTVs endpoints")
+	rootCmd.Flags().String("user", "usertest", "user UNSAFE(temp auth to access proxy)")
+	rootCmd.Flags().String("password", "passwordtest", "password UNSAFE(temp auth to access proxy)")
 
 	if e := viper.BindPFlags(rootCmd.Flags()); e != nil {
 		log.Fatal("error binding PFlags to viper")
