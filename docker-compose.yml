@@ -21,4 +21,5 @@ services:
       PORT: 8080
       # Hostname or IP to expose the IPTVs endpoints (for machine not for docker)
       HOSTNAME: localhost
+      GIN_MODE: release
 
