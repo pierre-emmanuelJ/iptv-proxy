@@ -32,6 +32,9 @@ start proxy server example:
 poxy-server --m3u-url http://iptvexample.net/iptvm3ufile.m3u \ # or local m3u file
             --port 8080 \ # port you want to expose your proxy
             --hostname proxyserver.com # hostname of your machine running this proxy
+            ##### UNSAFE AUTH TODO ADD REAL AUTH
+            --user test
+            --password passwordtest
 ```
 
 
@@ -54,14 +57,22 @@ http://poxyserver.com:8080/15/test/4
 ### Without Docker
 
 Download lasted [release](https://github.com/pierre-emmanuelJ/iptv-proxy/releases)
-```
-% iptv-proxy --m3u-url http://example.com/iptv.m3u --port 8080 --hostname poxyexample.com
+```Bash
+% iptv-proxy --m3u-url http://example.com/iptv.m3u \
+             --port 8080 --hostname poxyexample.com \
+             ##### UNSAFE AUTH TODO ADD REAL AUTH
+             --user test
+             --password passwordtest
 ```
 Or
 
-```
+```Bash
 % go install
-% iptv-proxy --m3u-url http://example.com/iptv.m3u --port 8080 --hostname poxyexample.com
+% iptv-proxy --m3u-url http://example.com/iptv.m3u \
+             --port 8080 --hostname poxyexample.com \
+             ##### UNSAFE AUTH TODO ADD REAL AUTH
+             --user test
+             --password passwordtest
 ```
 
 ### With Docker
@@ -84,6 +95,9 @@ Or
       PORT: 8080
       # Hostname or IP to expose the IPTVs endpoints (for machine not for docker)
       HOSTNAME: localhost
+      ##### UNSAFE AUTH TODO ADD REAL AUTH
+      USER: test
+      PASSWORD: testpassword
 ```
 
 #### Start
@@ -91,6 +105,12 @@ Or
 ```
 % docker-compose up -d
 ```
+
+## TODO
+
+there is unsafe auth just for testing.
+change with real auth with database and user management
+and auth with token
 
 **ENJOY!**
 
