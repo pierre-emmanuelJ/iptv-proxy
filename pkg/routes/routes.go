@@ -39,6 +39,8 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup) {
 	}
 
 	r.GET("/iptv.m3u", p.authenticate, p.getM3U)
+
+	// XXX Private need for external Android app
 	r.POST("/iptv.m3u", p.authenticate, p.getM3U)
 
 	for i, track := range proxyConfig.Playlist.Tracks {
