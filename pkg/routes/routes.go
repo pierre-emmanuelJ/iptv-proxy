@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/jamesnetherton/m3u"
 
@@ -67,11 +68,18 @@ func (p *proxy) reverseProxy(c *gin.Context) {
 		log.Fatal(err)
 	}
 
+	copyHTTPHeader(c, resp.Header)
 	c.Status(resp.StatusCode)
 	c.Stream(func(w io.Writer) bool {
 		io.Copy(w, resp.Body)
 		return false
 	})
+}
+
+func copyHTTPHeader(c *gin.Context, header http.Header) {
+	for k, v := range header {
+		c.Header(k, strings.Join(v, ", "))
+	}
 }
 
 func (p *proxy) getM3U(c *gin.Context) {
