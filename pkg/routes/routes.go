@@ -67,6 +67,7 @@ func (p *proxy) reverseProxy(c *gin.Context) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer resp.Body.Close()
 
 	copyHTTPHeader(c, resp.Header)
 	c.Status(resp.StatusCode)
