@@ -2,7 +2,6 @@ package routes
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -71,10 +70,13 @@ func (p *proxy) reverseProxy(c *gin.Context) {
 
 	copyHTTPHeader(c, resp.Header)
 	c.Status(resp.StatusCode)
-	c.Stream(func(w io.Writer) bool {
-		io.Copy(w, resp.Body)
-		return false
-	})
+	println("length", resp.ContentLength, "Content type", resp.Header.Get("Content-Type"))
+	c.DataFromReader(resp.StatusCode, resp.ContentLength, resp.Header.Get("Content-Type"), resp.Body, nil)
+	// c.Stream(func(w io.Writer) bool {
+
+	// 	io.Copy(w, resp.Body)
+	// 	return false
+	// })
 }
 
 func copyHTTPHeader(c *gin.Context, header http.Header) {
