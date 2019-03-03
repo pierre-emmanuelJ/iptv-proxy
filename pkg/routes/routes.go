@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jamesnetherton/m3u"
+	"github.com/nareix/joy4/av/avutil"
 
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/config"
 	proxyM3U "github.com/pierre-emmanuelJ/iptv-proxy/pkg/m3u"
@@ -62,18 +63,24 @@ func (p *proxy) reverseProxy(c *gin.Context) {
 		log.Fatal(err)
 	}
 
-	resp, err := http.Get(rpURL.String())
+	// resp, err := http.Get(rpURL.String())
+	// if err != nil {
+	//c.AbortWithError(http.StatusInternalServerError, err)
+	//	return
+	// }
+	// defer resp.Body.Close()
+
+	demuxer, err := avutil.Open(rpURL.String())
 	if err != nil {
-		log.Fatal(err)
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
 	}
-	defer resp.Body.Close()
 
-	copyHTTPHeader(c, resp.Header)
-	c.Status(resp.StatusCode)
-	println("length", resp.ContentLength, "Content type", resp.Header.Get("Content-Type"))
-	c.DataFromReader(resp.StatusCode, resp.ContentLength, resp.Header.Get("Content-Type"), resp.Body, nil)
+	println(demuxer)
+
+	// copyHTTPHeader(c, resp.Header)
+	// c.Status(resp.StatusCode)
 	// c.Stream(func(w io.Writer) bool {
-
 	// 	io.Copy(w, resp.Body)
 	// 	return false
 	// })
