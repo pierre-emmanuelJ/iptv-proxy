@@ -20,23 +20,29 @@ import (
 type proxy struct {
 	*config.ProxyConfig
 	*m3u.Track
+	newM3U []byte
 }
 
 // Serve the pfinder api
 func Serve(proxyConfig *config.ProxyConfig) error {
 	router := gin.Default()
 	router.Use(cors.Default())
-	Routes(proxyConfig, router.Group("/"))
+	newM3U, err := initm3u(proxyConfig)
+	if err != nil {
+		return err
+	}
+	Routes(proxyConfig, router.Group("/"), newM3U)
 
 	return router.Run(fmt.Sprintf(":%d", proxyConfig.HostConfig.Port))
 }
 
 // Routes adds the routes for the app to the RouterGroup r
-func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup) {
+func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup, newM3U []byte) {
 
 	p := &proxy{
 		proxyConfig,
 		nil,
+		newM3U,
 	}
 
 	r.GET("/iptv.m3u", p.authenticate, p.getM3U)
@@ -52,6 +58,7 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup) {
 		tmp := &proxy{
 			nil,
 			&proxyConfig.Playlist.Tracks[i],
+			nil,
 		}
 		r.GET(oriURL.RequestURI(), p.authenticate, tmp.reverseProxy)
 	}
@@ -84,19 +91,8 @@ func copyHTTPHeader(c *gin.Context, header http.Header) {
 }
 
 func (p *proxy) getM3U(c *gin.Context) {
-	playlist, err := proxyM3U.ReplaceURL(p.ProxyConfig)
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, err)
-		return
-	}
-
-	result, err := proxyM3U.Marshall(playlist)
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, err)
-		return
-	}
 	c.Header("Content-Disposition", "attachment; filename=\"iptv.m3u\"")
-	c.Data(http.StatusOK, "application/octet-stream", []byte(result))
+	c.Data(http.StatusOK, "application/octet-stream", p.newM3U)
 }
 
 // AuthRequest handle auth credentials
@@ -115,4 +111,18 @@ func (p *proxy) authenticate(ctx *gin.Context) {
 	if p.ProxyConfig.User != authReq.User || p.ProxyConfig.Password != authReq.Password {
 		ctx.AbortWithStatus(http.StatusUnauthorized)
 	}
+}
+
+func initm3u(p *config.ProxyConfig) ([]byte, error) {
+	playlist, err := proxyM3U.ReplaceURL(p)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := proxyM3U.Marshall(playlist)
+	if err != nil {
+		return nil, err
+	}
+
+	return []byte(result), nil
 }
