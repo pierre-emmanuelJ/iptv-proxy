@@ -18,6 +18,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const maxForbiddenRestart = 10
+
 type proxy struct {
 	*config.ProxyConfig
 	*m3u.Track
@@ -47,7 +49,6 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup, newM3U []byte) 
 	}
 
 	r.GET("/iptv.m3u", p.authenticate, p.getM3U)
-
 	// XXX Private need for external Android app
 	r.POST("/iptv.m3u", p.authenticate, p.getM3U)
 
@@ -77,6 +78,7 @@ func (p *proxy) reverseProxy(c *gin.Context) {
 		log.Fatal(err)
 	}
 
+	forbiddenRestart := maxForbiddenRestart
 	c.Stream(func(w io.Writer) bool {
 		resp, err := http.Get(rpURL.String())
 		if err != nil {
@@ -86,12 +88,25 @@ func (p *proxy) reverseProxy(c *gin.Context) {
 		defer resp.Body.Close()
 
 		c.Status(resp.StatusCode)
-		if resp.StatusCode != http.StatusOK {
+
+		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusForbidden {
 			return false
+		}
+
+		defer log.Printf("[iptv-proxy] %v | %d | %s |Restart track\t%s\n",
+			time.Now().Format("2006/01/02 - 15:04:05"),
+			resp.StatusCode,
+			c.ClientIP(), p.Track.Name,
+		)
+
+		if resp.StatusCode == http.StatusForbidden && forbiddenRestart > 0 {
+			forbiddenRestart--
+			return true
 		}
 
 		copyHTTPHeader(c, resp.Header)
 		io.Copy(w, resp.Body)
+
 		return true
 	})
 }

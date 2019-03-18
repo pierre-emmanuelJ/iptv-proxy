@@ -6,11 +6,11 @@ import (
 	"os"
 	"strings"
 
+	"github.com/jamesnetherton/m3u"
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/config"
 
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/routes"
 
-	"github.com/jamesnetherton/m3u"
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -23,7 +23,8 @@ var rootCmd = &cobra.Command{
 	Use:   "iptv-proxy",
 	Short: "A brief description of your application",
 	Run: func(cmd *cobra.Command, args []string) {
-		playlist, err := m3u.Parse(viper.GetString("m3u-url"))
+		m3uURL := viper.GetString("m3u-url")
+		playlist, err := m3u.Parse(m3uURL)
 		if err != nil {
 			log.Fatal(err)
 		}

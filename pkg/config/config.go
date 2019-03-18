@@ -1,6 +1,8 @@
 package config
 
-import "github.com/jamesnetherton/m3u"
+import (
+	"github.com/jamesnetherton/m3u"
+)
 
 // HostConfiguration containt host infos
 type HostConfiguration struct {
