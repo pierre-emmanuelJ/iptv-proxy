@@ -22,4 +22,12 @@ services:
       # Hostname or IP to expose the IPTVs endpoints (for machine not for docker)
       HOSTNAME: localhost
       GIN_MODE: release
+      ## Xtream-code proxy configuration
+      XTREAM_USER: xtream_user
+      XTREAM_PASSWORD: xtream_password
+      XTREAM_BASE_URL: "http://example.tv:8080"
+      ##### UNSAFE AUTH TODO ADD REAL AUTH
+      #will be used for m3u and xtream auth poxy
+      USER: test
+      PASSWORD: testpassword
 

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"strings"
 
@@ -29,14 +30,23 @@ var rootCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
+		remoteHostURL, err := url.Parse(m3uURL)
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		conf := &config.ProxyConfig{
 			Playlist: &playlist,
 			HostConfig: &config.HostConfiguration{
 				Hostname: viper.GetString("hostname"),
 				Port:     viper.GetInt64("port"),
 			},
-			User:     viper.GetString("user"),
-			Password: viper.GetString("password"),
+			RemoteURL:      remoteHostURL,
+			XtreamUser:     viper.GetString("xtream-user"),
+			XtreamPassword: viper.GetString("xtream-password"),
+			XtreamBaseURL:  viper.GetString("xtream-base-url"),
+			User:           viper.GetString("user"),
+			Password:       viper.GetString("password"),
 		}
 
 		if e := routes.Serve(conf); e != nil {
@@ -65,7 +75,10 @@ func init() {
 	rootCmd.Flags().Int64("port", 8080, "Port to expose the IPTVs endpoints")
 	rootCmd.Flags().String("hostname", "", "Hostname or IP to expose the IPTVs endpoints")
 	rootCmd.Flags().String("user", "usertest", "user UNSAFE(temp auth to access proxy)")
-	rootCmd.Flags().String("password", "passwordtest", "password UNSAFE(temp auth to access proxy)")
+	rootCmd.Flags().String("password", "passwordtest", "password UNSAFE(auth to access m3u proxy and xtream proxy)")
+	rootCmd.Flags().String("xtream-user", "xtream_user", "Xtream-code user login")
+	rootCmd.Flags().String("xtream-password", "xtream_password", "Xtream-code password login")
+	rootCmd.Flags().String("xtream-base-url", "http://expample.tv:8080", "Xtream-code base url")
 
 	if e := viper.BindPFlags(rootCmd.Flags()); e != nil {
 		log.Fatal("error binding PFlags to viper")

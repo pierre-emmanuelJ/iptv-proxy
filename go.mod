@@ -1,7 +1,6 @@
 module github.com/pierre-emmanuelJ/iptv-proxy
 
 require (
-	github.com/davecgh/go-spew v1.1.1
 	github.com/gin-contrib/cors v0.0.0-20190226021855-50921afdc5c1
 	github.com/gin-gonic/gin v1.3.0
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
@@ -9,4 +8,5 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/spf13/cobra v0.0.3
 	github.com/spf13/viper v1.3.1
+	github.com/tellytv/go.xtream-codes v0.0.0-20190114013623-9b74dcb500e4
 )
