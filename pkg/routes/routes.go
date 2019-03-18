@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/jamesnetherton/m3u"
 
@@ -65,6 +66,12 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup, newM3U []byte) 
 }
 
 func (p *proxy) reverseProxy(c *gin.Context) {
+
+	log.Printf("[iptv-proxy] %v | %s |Track\t%s\n",
+		time.Now().Format("2006/01/02 - 15:04:05"),
+		c.ClientIP(), p.Track.Name,
+	)
+
 	rpURL, err := url.Parse(p.Track.URI)
 	if err != nil {
 		log.Fatal(err)
