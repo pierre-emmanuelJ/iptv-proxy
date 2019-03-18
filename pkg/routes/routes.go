@@ -70,17 +70,22 @@ func (p *proxy) reverseProxy(c *gin.Context) {
 		log.Fatal(err)
 	}
 
-	resp, err := http.Get(rpURL.String())
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer resp.Body.Close()
-
-	copyHTTPHeader(c, resp.Header)
-	c.Status(resp.StatusCode)
 	c.Stream(func(w io.Writer) bool {
+		resp, err := http.Get(rpURL.String())
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return false
+		}
+		defer resp.Body.Close()
+
+		c.Status(resp.StatusCode)
+		if resp.StatusCode != http.StatusOK {
+			return false
+		}
+
+		copyHTTPHeader(c, resp.Header)
 		io.Copy(w, resp.Body)
-		return false
+		return true
 	})
 }
 
