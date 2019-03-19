@@ -102,6 +102,8 @@ func (p *proxy) reverseProxy(c *gin.Context) {
 		if resp.StatusCode == http.StatusForbidden && forbiddenRestart > 0 {
 			forbiddenRestart--
 			return true
+		} else if resp.StatusCode == http.StatusForbidden {
+			return false
 		}
 
 		copyHTTPHeader(c, resp.Header)
