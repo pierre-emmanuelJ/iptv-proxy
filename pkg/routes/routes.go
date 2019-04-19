@@ -52,17 +52,15 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup, newM3U []byte) 
 	// XXX Private need for external Android app
 	r.POST("/iptv.m3u", p.authenticate, p.getM3U)
 
-	for i, track := range proxyConfig.Playlist.Tracks {
-		oriURL, err := url.Parse(track.URI)
-		if err != nil {
-			return
-		}
+	for i, _ := range proxyConfig.Playlist.Tracks {
 		tmp := &proxy{
 			nil,
 			&proxyConfig.Playlist.Tracks[i],
 			nil,
 		}
-		r.GET(oriURL.RequestURI(), p.authenticate, tmp.reverseProxy)
+
+		uri := fmt.Sprintf("/%d", i)
+		r.GET(uri, p.authenticate, tmp.reverseProxy)
 	}
 }
 

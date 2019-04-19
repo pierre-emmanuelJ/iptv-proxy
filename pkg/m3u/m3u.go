@@ -13,7 +13,7 @@ func Marshall(p *m3u.Playlist) (string, error) {
 	result := "#EXTM3U\n"
 	for _, track := range p.Tracks {
 		result += "#EXTINF:"
-		result += fmt.Sprintf("%d ", track.Length)
+		result += fmt.Sprintf("%d,", track.Length)
 		for i := range track.Tags {
 			if i == len(track.Tags)-1 {
 				result += fmt.Sprintf("%s=%q,", track.Tags[i].Name, track.Tags[i].Value)
@@ -30,17 +30,13 @@ func Marshall(p *m3u.Playlist) (string, error) {
 // ReplaceURL replace original playlist url by proxy url
 func ReplaceURL(proxyConfig *config.ProxyConfig) (*m3u.Playlist, error) {
 	result := make([]m3u.Track, 0, len(proxyConfig.Playlist.Tracks))
-	for _, track := range proxyConfig.Playlist.Tracks {
-		oriURL, err := url.Parse(track.URI)
-		if err != nil {
-			return nil, err
-		}
+	for i, track := range proxyConfig.Playlist.Tracks {
 		config := proxyConfig.HostConfig
 		uri := fmt.Sprintf(
-			"http://%s:%d%s?user=%s&password=%s",
+			"http://%s:%d/%d?user=%s&password=%s",
 			config.Hostname,
 			config.Port,
-			oriURL.RequestURI(),
+			i,
 			proxyConfig.User,
 			proxyConfig.Password,
 		)
