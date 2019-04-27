@@ -12,6 +12,8 @@ with the new routes to the proxy server
 
 ### Xtream server api
 
+proxy on xtream server api
+
 support live, vod, series and full epg :rocket:
 
 ### Example
