@@ -3,14 +3,15 @@ package cmd
 import (
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"strings"
 
+	"github.com/jamesnetherton/m3u"
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/config"
 
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/routes"
 
-	"github.com/jamesnetherton/m3u"
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -23,7 +24,13 @@ var rootCmd = &cobra.Command{
 	Use:   "iptv-proxy",
 	Short: "A brief description of your application",
 	Run: func(cmd *cobra.Command, args []string) {
-		playlist, err := m3u.Parse(viper.GetString("m3u-url"))
+		m3uURL := viper.GetString("m3u-url")
+		playlist, err := m3u.Parse(m3uURL)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		remoteHostURL, err := url.Parse(m3uURL)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -34,8 +41,12 @@ var rootCmd = &cobra.Command{
 				Hostname: viper.GetString("hostname"),
 				Port:     viper.GetInt64("port"),
 			},
-			User:     viper.GetString("user"),
-			Password: viper.GetString("password"),
+			RemoteURL:      remoteHostURL,
+			XtreamUser:     viper.GetString("xtream-user"),
+			XtreamPassword: viper.GetString("xtream-password"),
+			XtreamBaseURL:  viper.GetString("xtream-base-url"),
+			User:           viper.GetString("user"),
+			Password:       viper.GetString("password"),
 		}
 
 		if e := routes.Serve(conf); e != nil {
@@ -64,7 +75,10 @@ func init() {
 	rootCmd.Flags().Int64("port", 8080, "Port to expose the IPTVs endpoints")
 	rootCmd.Flags().String("hostname", "", "Hostname or IP to expose the IPTVs endpoints")
 	rootCmd.Flags().String("user", "usertest", "user UNSAFE(temp auth to access proxy)")
-	rootCmd.Flags().String("password", "passwordtest", "password UNSAFE(temp auth to access proxy)")
+	rootCmd.Flags().String("password", "passwordtest", "password UNSAFE(auth to access m3u proxy and xtream proxy)")
+	rootCmd.Flags().String("xtream-user", "xtream_user", "Xtream-code user login")
+	rootCmd.Flags().String("xtream-password", "xtream_password", "Xtream-code password login")
+	rootCmd.Flags().String("xtream-base-url", "http://expample.tv:8080", "Xtream-code base url")
 
 	if e := viper.BindPFlags(rootCmd.Flags()); e != nil {
 		log.Fatal("error binding PFlags to viper")

@@ -37,7 +37,7 @@ func ReplaceURL(proxyConfig *config.ProxyConfig) (*m3u.Playlist, error) {
 		}
 		config := proxyConfig.HostConfig
 		uri := fmt.Sprintf(
-			"http://%s:%d%s?user=%s&password=%s",
+			"http://%s:%d%s?username=%s&password=%s",
 			config.Hostname,
 			config.Port,
 			oriURL.RequestURI(),
