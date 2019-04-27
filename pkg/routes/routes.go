@@ -21,10 +21,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const (
-	maxForbiddenRestart = 10
-)
-
 type proxy struct {
 	*config.ProxyConfig
 	*m3u.Track
@@ -198,6 +194,15 @@ func (p *proxy) xtreamStreamSeries(c *gin.Context) {
 	stream(c, rpURL)
 }
 
+func (p *proxy) reverseProxy(c *gin.Context) {
+	rpURL, err := url.Parse(p.Track.URI)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	stream(c, rpURL)
+}
+
 func stream(c *gin.Context, oriURL *url.URL) {
 	resp, err := http.Get(oriURL.String())
 	if err != nil {
@@ -211,51 +216,6 @@ func stream(c *gin.Context, oriURL *url.URL) {
 	c.Stream(func(w io.Writer) bool {
 		io.Copy(w, resp.Body)
 		return false
-	})
-}
-
-func (p *proxy) reverseProxy(c *gin.Context) {
-
-	log.Printf("[iptv-proxy] %v | %s |Track\t%s\n",
-		time.Now().Format("2006/01/02 - 15:04:05"),
-		c.ClientIP(), p.Track.Name,
-	)
-
-	rpURL, err := url.Parse(p.Track.URI)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	forbiddenRestart := maxForbiddenRestart
-	c.Stream(func(w io.Writer) bool {
-		resp, err := http.Get(rpURL.String())
-		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err)
-			return false
-		}
-		defer resp.Body.Close()
-
-		c.Status(resp.StatusCode)
-
-		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusForbidden {
-			return false
-		}
-
-		defer log.Printf("[iptv-proxy] %v | %d | %s |Restart track\t%s\n",
-			time.Now().Format("2006/01/02 - 15:04:05"),
-			resp.StatusCode,
-			c.ClientIP(), p.Track.Name,
-		)
-
-		if resp.StatusCode == http.StatusForbidden && forbiddenRestart > 0 {
-			forbiddenRestart--
-			return true
-		}
-
-		copyHTTPHeader(c, resp.Header)
-		io.Copy(w, resp.Body)
-
-		return true
 	})
 }
 
