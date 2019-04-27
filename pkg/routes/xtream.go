@@ -110,6 +110,17 @@ func (p *proxy) xtreamStream(c *gin.Context) {
 	stream(c, rpURL)
 }
 
+func (p *proxy) xtreamStreamLive(c *gin.Context) {
+	id := c.Param("id")
+	rpURL, err := url.Parse(fmt.Sprintf("%s/live/%s/%s/%s", p.XtreamBaseURL, p.XtreamUser, p.XtreamPassword, id))
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	stream(c, rpURL)
+}
+
 func (p *proxy) xtreamStreamMovie(c *gin.Context) {
 	id := c.Param("id")
 	rpURL, err := url.Parse(fmt.Sprintf("%s/movie/%s/%s/%s", p.XtreamBaseURL, p.XtreamUser, p.XtreamPassword, id))

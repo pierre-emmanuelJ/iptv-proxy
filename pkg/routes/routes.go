@@ -56,7 +56,7 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup, newM3U []byte) 
 	r.POST("/player_api.php", p.appAuthenticate, p.xtreamPlayerAPI)
 	r.GET("/xmltv.php", p.authenticate, p.xtreamXMLTV)
 	r.GET(fmt.Sprintf("/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStream)
-	r.GET(fmt.Sprintf("/live/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStream)
+	r.GET(fmt.Sprintf("/live/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStreamLive)
 	r.GET(fmt.Sprintf("/movie/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStreamMovie)
 	r.GET(fmt.Sprintf("/series/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStreamSeries)
 
