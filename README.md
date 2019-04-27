@@ -16,7 +16,7 @@ proxy on xtream server api
 
 support live, vod, series and full epg :rocket:
 
-### Example
+### M3u Example
 
 original iptv m3u file
 ```m3u
@@ -31,56 +31,94 @@ http://iptvexample.net:1234/14/test/3
 http://iptvexample.net:1234/15/test/4
 ```
 
-What proxy IPTV do
+What m3u proxy IPTV do:
  - convert chanels url to new endpoints
  - convert original m3u file with new routes
 
 start proxy server example:
 ```Bash
-poxy-server --m3u-url http://iptvexample.net/iptvm3ufile.m3u \ # or local m3u file
-            --port 8080 \ # port you want to expose your proxy
-            --hostname proxyserver.com # hostname of your machine running this proxy
-            ##### UNSAFE AUTH TODO ADD REAL AUTH
-            --user test
-            --password passwordtest
+iptv-proxy --m3u-url http://example.com/get.php?username=user&password=pass&type=m3u_plus&output=m3u8 \
+             --port 8080 \
+             --hostname poxyexample.com \
+             ##### UNSAFE AUTH TODO ADD REAL AUTH
+             --user test \
+             --password passwordtest
 ```
 
 
- - give you the m3u file on a specific endpoint `http://poxyserver.com:8080/iptv.m3u`
+ that's give you the m3u file on a specific endpoint:
+ 
+ `http://poxyserver.com:8080/iptv.m3u?username=test&password=passwordtest`
 
 ```m3u
 #EXTM3U
 #EXTINF:-1 tvg-ID="examplechanel1.com" tvg-name="chanel1" tvg-logo="http://ch.xyz/logo1.png" group-title="USA HD",CHANEL1-HD
-http://poxyserver.com:8080/12/test/1
+http://poxyserver.com:8080/12/test/1?username=test&password=passwordtest
 #EXTINF:-1 tvg-ID="examplechanel2.com" tvg-name="chanel2" tvg-logo="http://ch.xyz/logo2.png" group-title="USA HD",CHANEL2-HD
-http://poxyserver.com:8080/13/test/2
+http://poxyserver.com:8080/13/test/2?username=test&password=passwordtest
 #EXTINF:-1 tvg-ID="examplechanel3.com" tvg-name="chanel3" tvg-logo="http://ch.xyz/logo3.png" group-title="USA HD",CHANEL3-HD
-http://poxyserver.com:8080/14/test/3
+http://poxyserver.com:8080/14/test/3?username=test&password=passwordtest
 #EXTINF:-1 tvg-ID="examplechanel4.com" tvg-name="chanel4" tvg-logo="http://ch.xyz/logo4.png" group-title="USA HD",CHANEL4-HD
-http://poxyserver.com:8080/15/test/4
+http://poxyserver.com:8080/15/test/4?username=test&password=passwordtest
 ```
+### Xtream code server api Example
+
+```Bash
+% iptv-proxy --m3u-url http://example.com:1234/get.php?username=user&password=pass&type=m3u_plus&output=m3u8 \
+             --port 8080 \
+             --hostname poxyexample.com \
+             ## put xtream flags if you want to add xtream proxy
+             --xtream-user xtream_user \
+             --xtream-password xtream_password \
+             --xtream-base-url http://example.com:1234 \
+             ##### UNSAFE AUTH TODO ADD REAL AUTH
+             --user test \
+             --password passwordtest
+             
+```
+
+What xtream proxy do:
+ - convert xtream `xtream-user ` and `xtream-password` into new `user` and `password`
+ - convert `xtream-base-url` with `hostname` and `port`
+ 
+ original xtream credentials:
+ ```
+ user: xtream_user
+ password: xtream_password
+ base-url: http://example.com:1234
+ ```
+ new xtream credentials:
+ ```
+ user: test
+ password: passwordtest
+ base-url: http:/poxyexample.com:8080
+ ```
+ 
+ All xtream live, streams, vod, series... are poxyfied! 
+
 
 ## Installation
 
 ### Without Docker
 
 Download lasted [release](https://github.com/pierre-emmanuelJ/iptv-proxy/releases)
-```Bash
-% iptv-proxy --m3u-url http://example.com/iptv.m3u \
-             --port 8080 --hostname poxyexample.com \
-             ##### UNSAFE AUTH TODO ADD REAL AUTH
-             --user test
-             --password passwordtest
-```
+
 Or
 
+`% go install` in root repository
+
 ```Bash
-% go install
-% iptv-proxy --m3u-url http://example.com/iptv.m3u \
-             --port 8080 --hostname poxyexample.com \
+% iptv-proxy --m3u-url http://example.com:1234/get.php?username=user&password=pass&type=m3u_plus&output=m3u8 \
+             --port 8080 \
+             --hostname poxyexample.com \
+             ## put xtream flags if you want to add xtream proxy
+             --xtream-user xtream_user \
+             --xtream-password xtream_password \
+             --xtream-base-url http://example.com:1234 \
              ##### UNSAFE AUTH TODO ADD REAL AUTH
-             --user test
+             --user test \
              --password passwordtest
+             
 ```
 
 ### With Docker
@@ -97,12 +135,18 @@ Or
       - 8080:8080
  environment:
       # if you are using m3u remote file
-      # M3U_URL: https://example.com/iptvfile.m3u
+      # M3U_URL: http://example.com:1234/get.php?username=user&password=pass&type=m3u_plus&output=m3u8
       M3U_URL: /root/iptv/iptv.m3u
       # Port to expose the IPTVs endpoints
       PORT: 8080
       # Hostname or IP to expose the IPTVs endpoints (for machine not for docker)
       HOSTNAME: localhost
+      GIN_MODE: release
+      ## Xtream-code proxy configuration
+      ## (put these env variables if you want to add xtream proxy)
+      XTREAM_USER: xtream_user
+      XTREAM_PASSWORD: xtream_password
+      XTREAM_BASE_URL: "http://example.com:1234"
       ##### UNSAFE AUTH TODO ADD REAL AUTH
       USER: test
       PASSWORD: testpassword

@@ -8,5 +8,5 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/spf13/cobra v0.0.3
 	github.com/spf13/viper v1.3.1
-	github.com/tellytv/go.xtream-codes v0.0.0-20190114013623-9b74dcb500e4
+	github.com/tellytv/go.xtream-codes v0.0.0-20190427212115-45e8162ba888
 )

@@ -3,6 +3,7 @@ package xtreamcodes
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,19 +12,21 @@ import (
 	"strconv"
 )
 
-var userAgent = "go.xstream-codes (Go-http-client/1.1)"
+var defaultUserAgent = "go.xstream-codes (Go-http-client/1.1)"
 
 // XtreamClient is the client used to communicate with a Xtream-Codes server.
 type XtreamClient struct {
-	Username string
-	Password string
-	BaseURL  string
+	Username  string
+	Password  string
+	BaseURL   string
+	UserAgent string
 
 	ServerInfo ServerInfo
 	UserInfo   UserInfo
 
 	// Our HTTP client to communicate with Xtream
-	HTTP *http.Client
+	HTTP    *http.Client
+	Context context.Context
 
 	// We store an internal map of Streams for use with GetStreamURL
 	streams map[int]Stream
@@ -38,11 +41,13 @@ func NewClient(username, password, baseURL string) (*XtreamClient, error) {
 	}
 
 	client := &XtreamClient{
-		Username: username,
-		Password: password,
-		BaseURL:  baseURL,
+		Username:  username,
+		Password:  password,
+		BaseURL:   baseURL,
+		UserAgent: defaultUserAgent,
 
-		HTTP: http.DefaultClient,
+		HTTP:    http.DefaultClient,
+		Context: context.Background(),
 
 		streams: make(map[int]Stream),
 	}
@@ -62,6 +67,21 @@ func NewClient(username, password, baseURL string) (*XtreamClient, error) {
 	client.UserInfo = a.UserInfo
 
 	return client, nil
+}
+
+// NewClientWithContext returns an initialized XtreamClient with the given values.
+func NewClientWithContext(ctx context.Context, username, password, baseURL string) (*XtreamClient, error) {
+	c, err := NewClient(username, password, baseURL)
+	c.Context = ctx
+	return c, err
+}
+
+// NewClientWithUserAgent returns an initialized XtreamClient with the given values.
+func NewClientWithUserAgent(ctx context.Context, username, password, baseURL, userAgent string) (*XtreamClient, error) {
+	c, err := NewClient(username, password, baseURL)
+	c.UserAgent = userAgent
+	c.Context = ctx
+	return c, err
 }
 
 // GetStreamURL will return a stream URL string for the given streamID and wantedFormat.
@@ -292,7 +312,9 @@ func (c *XtreamClient) sendRequest(action string, parameters url.Values) ([]byte
 		return nil, httpErr
 	}
 
-	request.Header.Set("User-Agent", userAgent)
+	request.Header.Set("User-Agent", c.UserAgent)
+
+	request = request.WithContext(c.Context)
 
 	response, httpErr := c.HTTP.Do(request)
 	if httpErr != nil {

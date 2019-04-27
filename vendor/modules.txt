@@ -55,7 +55,7 @@ github.com/spf13/jwalterweatherman
 github.com/spf13/pflag
 # github.com/spf13/viper v1.3.1
 github.com/spf13/viper
-# github.com/tellytv/go.xtream-codes v0.0.0-20190114013623-9b74dcb500e4
+# github.com/tellytv/go.xtream-codes v0.0.0-20190427212115-45e8162ba888
 github.com/tellytv/go.xtream-codes
 # github.com/ugorji/go/codec v0.0.0-20181209151446-772ced7fd4c2
 github.com/ugorji/go/codec
