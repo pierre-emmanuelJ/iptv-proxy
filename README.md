@@ -2,11 +2,17 @@
 
 ## Description
 
+### M3u
+
 Iptv Proxy is a project to convert an iptv m3u file
 
 into a web proxy server And give a new m3u file
 
 with the new routes to the proxy server
+
+### xtream server api
+
+support live, vod, series and full epg :rocket:
 
 ### Example
 
@@ -113,4 +119,11 @@ change with real auth with database and user management
 and auth with token
 
 **ENJOY!**
+
+## Powered by
+
+- [cobra](https://github.com/spf13/cobra)
+- [go.xtream-codes](https://github.com/tellytv/go.xtream-codes)
+- [gin](https://github.com/gin-gonic/gin)
+
 
