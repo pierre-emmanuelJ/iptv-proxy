@@ -10,7 +10,7 @@ into a web proxy server And give a new m3u file
 
 with the new routes to the proxy server
 
-### xtream server api
+### Xtream server api
 
 support live, vod, series and full epg :rocket:
 
