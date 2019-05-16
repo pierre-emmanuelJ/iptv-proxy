@@ -70,7 +70,7 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup, newM3U []byte) 
 			&proxyConfig.Playlist.Tracks[i],
 			nil,
 		}
-		r.GET(oriURL.RequestURI(), p.authenticate, tmp.reverseProxy)
+		r.GET(oriURL.Path, p.authenticate, tmp.reverseProxy)
 	}
 }
 
