@@ -40,7 +40,7 @@ func ReplaceURL(proxyConfig *config.ProxyConfig) (*m3u.Playlist, error) {
 			"http://%s:%d%s?username=%s&password=%s",
 			config.Hostname,
 			config.Port,
-			oriURL.RequestURI(),
+			oriURL.Path,
 			proxyConfig.User,
 			proxyConfig.Password,
 		)
