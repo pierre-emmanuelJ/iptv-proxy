@@ -13,17 +13,7 @@ import (
 )
 
 func (p *proxy) xtreamPlayerAPIGET(c *gin.Context) {
-
-	log.Println(c.Request.RequestURI)
-
-	q, err := url.ParseQuery(c.Request.RequestURI)
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, err)
-		return
-	}
-
-	p.xtreamPlayerAPI(c, q)
-
+	p.xtreamPlayerAPI(c, c.Request.URL.Query())
 }
 
 func (p *proxy) xtreamPlayerAPIPOST(c *gin.Context) {
@@ -33,8 +23,6 @@ func (p *proxy) xtreamPlayerAPIPOST(c *gin.Context) {
 		return
 	}
 
-	log.Println(string(contents))
-
 	q, err := url.ParseQuery(string(contents))
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
@@ -42,7 +30,6 @@ func (p *proxy) xtreamPlayerAPIPOST(c *gin.Context) {
 	}
 
 	p.xtreamPlayerAPI(c, q)
-
 }
 
 func (p *proxy) xtreamPlayerAPI(c *gin.Context, q url.Values) {
