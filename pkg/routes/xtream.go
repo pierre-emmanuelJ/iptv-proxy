@@ -12,7 +12,21 @@ import (
 	xtreamapi "github.com/pierre-emmanuelJ/iptv-proxy/pkg/xtream-proxy"
 )
 
-func (p *proxy) xtreamPlayerAPI(c *gin.Context) {
+func (p *proxy) xtreamPlayerAPIGET(c *gin.Context) {
+
+	log.Println(c.Request.RequestURI)
+
+	q, err := url.ParseQuery(c.Request.RequestURI)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	p.xtreamPlayerAPI(c, q)
+
+}
+
+func (p *proxy) xtreamPlayerAPIPOST(c *gin.Context) {
 	contents, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
@@ -26,11 +40,12 @@ func (p *proxy) xtreamPlayerAPI(c *gin.Context) {
 		c.AbortWithError(http.StatusInternalServerError, err)
 		return
 	}
-	if len(q["username"]) == 0 || len(q["password"]) == 0 {
-		c.AbortWithError(http.StatusBadRequest, fmt.Errorf(`bad body url query parameters: missing "username" and "password"`))
-		return
-	}
 
+	p.xtreamPlayerAPI(c, q)
+
+}
+
+func (p *proxy) xtreamPlayerAPI(c *gin.Context, q url.Values) {
 	var action string
 	if len(q["action"]) > 0 {
 		action = q["action"][0]

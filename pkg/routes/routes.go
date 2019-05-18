@@ -53,8 +53,8 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup, newM3U []byte) 
 	r.POST("/iptv.m3u", p.authenticate, p.getM3U)
 
 	//Xtream, iptv Smarter android app compatibility
-	r.GET("/player_api.php", p.authenticate, p.xtreamPlayerAPI)
-	r.POST("/player_api.php", p.appAuthenticate, p.xtreamPlayerAPI)
+	r.GET("/player_api.php", p.authenticate, p.xtreamPlayerAPIGET)
+	r.POST("/player_api.php", p.appAuthenticate, p.xtreamPlayerAPIPOST)
 	r.GET("/xmltv.php", p.authenticate, p.xtreamXMLTV)
 	r.GET(fmt.Sprintf("/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStream)
 	r.GET(fmt.Sprintf("/live/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStreamLive)
