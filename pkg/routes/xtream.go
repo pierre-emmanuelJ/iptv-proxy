@@ -144,3 +144,13 @@ func (p *proxy) xtreamStreamSeries(c *gin.Context) {
 
 	stream(c, rpURL)
 }
+
+func (p *proxy) hlsrStream(c *gin.Context) {
+	req, err := url.Parse(fmt.Sprintf("%s%s", p.XtreamBaseURL, c.Request.URL.String()))
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	stream(c, req)
+}

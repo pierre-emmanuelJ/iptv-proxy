@@ -52,8 +52,6 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup, newM3U []byte) 
 	// XXX Private need for external Android app
 	r.POST("/iptv.m3u", p.authenticate, p.getM3U)
 
-	r.GET("/hlsr/*", p.authenticate, p.xtreamStream)
-
 	//Xtream, iptv Smarter android app compatibility
 	r.GET("/player_api.php", p.authenticate, p.xtreamPlayerAPIGET)
 	r.POST("/player_api.php", p.appAuthenticate, p.xtreamPlayerAPIPOST)
@@ -62,6 +60,7 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup, newM3U []byte) 
 	r.GET(fmt.Sprintf("/live/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStreamLive)
 	r.GET(fmt.Sprintf("/movie/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStreamMovie)
 	r.GET(fmt.Sprintf("/series/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStreamSeries)
+	r.GET("/hlsr/:token/:username/:password/:channel/:tmp/:extension", p.hlsrStream)
 
 	for i, track := range proxyConfig.Playlist.Tracks {
 		oriURL, err := url.Parse(track.URI)
