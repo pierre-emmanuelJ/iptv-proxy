@@ -9,8 +9,42 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jamesnetherton/m3u"
+	proxyM3U "github.com/pierre-emmanuelJ/iptv-proxy/pkg/m3u"
 	xtreamapi "github.com/pierre-emmanuelJ/iptv-proxy/pkg/xtream-proxy"
 )
+
+func (p *proxy) xtreamGet(c *gin.Context) {
+
+	//TODO Add old query params
+	m3uURL, err := url.Parse(fmt.Sprintf("%s/get.php?username=%s&password%s", p.XtreamBaseURL, p.XtreamUser, p.XtreamPassword))
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	playlist, err := m3u.Parse(m3uURL.String())
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	newM3U, err := proxyM3U.ReplaceURL(&playlist, p.User, p.Password, p.HostConfig)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	result, err := proxyM3U.Marshall(newM3U)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	c.Header("Content-Disposition", "attachment; filename=\"iptv.m3u\"")
+	c.Data(http.StatusOK, "application/octet-stream", []byte(result))
+
+}
 
 func (p *proxy) xtreamPlayerAPIGET(c *gin.Context) {
 	p.xtreamPlayerAPI(c, c.Request.URL.Query())

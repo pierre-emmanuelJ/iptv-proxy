@@ -53,6 +53,8 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup, newM3U []byte) 
 	r.POST("/iptv.m3u", p.authenticate, p.getM3U)
 
 	//Xtream, iptv Smarter android app compatibility
+	r.GET("/get.php", p.authenticate, p.xtreamGet)
+	r.POST("/get.php", p.authenticate, p.xtreamGet)
 	r.GET("/player_api.php", p.authenticate, p.xtreamPlayerAPIGET)
 	r.POST("/player_api.php", p.appAuthenticate, p.xtreamPlayerAPIPOST)
 	r.GET("/xmltv.php", p.authenticate, p.xtreamXMLTV)
@@ -114,7 +116,7 @@ func copyHTTPHeader(c *gin.Context, header http.Header) {
 
 // AuthRequest handle auth credentials
 type AuthRequest struct {
-	User     string `form:"username" binding:"required"`
+	Username string `form:"username" binding:"required"`
 	Password string `form:"password" binding:"required"`
 } // XXX very unsafe
 
@@ -125,7 +127,7 @@ func (p *proxy) authenticate(ctx *gin.Context) {
 		return
 	}
 	//XXX very unsafe
-	if p.ProxyConfig.User != authReq.User || p.ProxyConfig.Password != authReq.Password {
+	if p.ProxyConfig.User != authReq.Username || p.ProxyConfig.Password != authReq.Password {
 		ctx.AbortWithStatus(http.StatusUnauthorized)
 	}
 }
@@ -156,7 +158,7 @@ func (p *proxy) appAuthenticate(c *gin.Context) {
 }
 
 func initm3u(p *config.ProxyConfig) ([]byte, error) {
-	playlist, err := proxyM3U.ReplaceURL(p)
+	playlist, err := proxyM3U.ReplaceURL(p.Playlist, p.User, p.Password, p.HostConfig)
 	if err != nil {
 		return nil, err
 	}
