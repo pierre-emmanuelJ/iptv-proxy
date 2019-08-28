@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,7 +16,7 @@ import (
 )
 
 func (p *proxy) xtreamGet(c *gin.Context) {
-	rawURL := fmt.Sprintf("%s/get.php?username=%s&password%s", p.XtreamBaseURL, p.XtreamUser, p.XtreamPassword)
+	rawURL := fmt.Sprintf("%s/get.php?username=%s&password=%s", p.XtreamBaseURL, p.XtreamUser, p.XtreamPassword)
 
 	q := c.Request.URL.Query()
 
@@ -24,7 +25,7 @@ func (p *proxy) xtreamGet(c *gin.Context) {
 			continue
 		}
 
-		rawURL = fmt.Sprintf("%s&%s=%s", rawURL, k, v)
+		rawURL = fmt.Sprintf("%s&%s=%s", rawURL, k, strings.Join(v, ","))
 	}
 
 	m3uURL, err := url.Parse(rawURL)
@@ -32,8 +33,6 @@ func (p *proxy) xtreamGet(c *gin.Context) {
 		c.AbortWithError(http.StatusInternalServerError, err)
 		return
 	}
-
-	println("debug:", m3uURL.String())
 
 	playlist, err := m3u.Parse(m3uURL.String())
 	if err != nil {
