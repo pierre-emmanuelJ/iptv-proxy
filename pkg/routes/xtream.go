@@ -15,9 +15,19 @@ import (
 )
 
 func (p *proxy) xtreamGet(c *gin.Context) {
+	rawURL := fmt.Sprintf("%s/get.php?username=%s&password%s", p.XtreamBaseURL, p.XtreamUser, p.XtreamPassword)
 
-	//TODO Add old query params
-	m3uURL, err := url.Parse(fmt.Sprintf("%s/get.php?username=%s&password%s", p.XtreamBaseURL, p.XtreamUser, p.XtreamPassword))
+	q := c.Request.URL.Query()
+
+	for k, v := range q {
+		if k == "username" || k == "password" {
+			continue
+		}
+
+		rawURL = fmt.Sprintf("%s&%s=%s", rawURL, k, v)
+	}
+
+	m3uURL, err := url.Parse(rawURL)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
 		return
@@ -43,7 +53,6 @@ func (p *proxy) xtreamGet(c *gin.Context) {
 
 	c.Header("Content-Disposition", "attachment; filename=\"iptv.m3u\"")
 	c.Data(http.StatusOK, "application/octet-stream", []byte(result))
-
 }
 
 func (p *proxy) xtreamPlayerAPIGET(c *gin.Context) {
