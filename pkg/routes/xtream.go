@@ -33,6 +33,8 @@ func (p *proxy) xtreamGet(c *gin.Context) {
 		return
 	}
 
+	println("debug:", m3uURL.String())
+
 	playlist, err := m3u.Parse(m3uURL.String())
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
