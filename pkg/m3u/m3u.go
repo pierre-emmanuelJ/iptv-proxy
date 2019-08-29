@@ -28,21 +28,21 @@ func Marshall(p *m3u.Playlist) (string, error) {
 }
 
 // ReplaceURL replace original playlist url by proxy url
-func ReplaceURL(proxyConfig *config.ProxyConfig) (*m3u.Playlist, error) {
-	result := make([]m3u.Track, 0, len(proxyConfig.Playlist.Tracks))
-	for _, track := range proxyConfig.Playlist.Tracks {
+func ReplaceURL(playlist *m3u.Playlist, user, password string, hostConfig *config.HostConfiguration) (*m3u.Playlist, error) {
+	result := make([]m3u.Track, 0, len(playlist.Tracks))
+	for _, track := range playlist.Tracks {
 		oriURL, err := url.Parse(track.URI)
 		if err != nil {
 			return nil, err
 		}
-		config := proxyConfig.HostConfig
+
 		uri := fmt.Sprintf(
 			"http://%s:%d%s?username=%s&password=%s",
-			config.Hostname,
-			config.Port,
+			hostConfig.Hostname,
+			hostConfig.Port,
 			oriURL.Path,
-			proxyConfig.User,
-			proxyConfig.Password,
+			user,
+			password,
 		)
 		destURL, err := url.Parse(uri)
 		if err != nil {
