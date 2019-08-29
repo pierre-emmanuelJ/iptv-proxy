@@ -113,20 +113,6 @@ Or
 
 `% go install` in root repository
 
-```Bash
-% iptv-proxy --m3u-url http://example.com:1234/get.php?username=user&password=pass&type=m3u_plus&output=m3u8 \
-             --port 8080 \
-             --hostname poxyexample.com \
-             ## put xtream flags if you want to add xtream proxy
-             --xtream-user xtream_user \
-             --xtream-password xtream_password \
-             --xtream-base-url http://example.com:1234 \
-             ##### UNSAFE AUTH TODO ADD REAL AUTH
-             --user test \
-             --password passwordtest
-             
-```
-
 ### With Docker
 
 #### Prerequisite
