@@ -91,10 +91,16 @@ What xtream proxy do:
  ```
  user: test
  password: passwordtest
- base-url: http:/poxyexample.com:8080
+ base-url: http://poxyexample.com:8080
  ```
  
  All xtream live, streams, vod, series... are poxyfied! 
+ 
+ 
+ You can get the m3u file with the xtream api request:
+ ```
+ http://poxyexample.com:8080/get.php?username=test&password=passwordtest&type=m3u_plus&output=ts
+ ```
 
 
 ## Installation
