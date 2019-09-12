@@ -47,6 +47,7 @@ var rootCmd = &cobra.Command{
 			XtreamBaseURL:  viper.GetString("xtream-base-url"),
 			User:           viper.GetString("user"),
 			Password:       viper.GetString("password"),
+			HTTPS:          viper.GetBool("https"),
 		}
 
 		if e := routes.Serve(conf); e != nil {
@@ -74,6 +75,7 @@ func init() {
 	rootCmd.Flags().String("m3u-url", "http://example.com/iptv.m3u", "iptv m3u file")
 	rootCmd.Flags().Int64("port", 8080, "Port to expose the IPTVs endpoints")
 	rootCmd.Flags().String("hostname", "", "Hostname or IP to expose the IPTVs endpoints")
+	rootCmd.Flags().BoolP("https", "", false, "Activate https for urls proxy")
 	rootCmd.Flags().String("user", "usertest", "user UNSAFE(temp auth to access proxy)")
 	rootCmd.Flags().String("password", "passwordtest", "password UNSAFE(auth to access m3u proxy and xtream proxy)")
 	rootCmd.Flags().String("xtream-user", "xtream_user", "Xtream-code user login")

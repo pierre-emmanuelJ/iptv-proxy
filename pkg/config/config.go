@@ -20,6 +20,7 @@ type ProxyConfig struct {
 	XtreamPassword string
 	XtreamBaseURL  string
 	RemoteURL      *url.URL
+	HTTPS          bool
 	//XXX Very unsafe
 	User, Password string
 }

@@ -33,7 +33,7 @@ type Login struct {
 	ServerInfo xtream.ServerInfo `json:"server_info"`
 }
 
-func (c *Client) Login(proxyUser, proxyPassword, proxyURL string, proxyPort int) (Login, error) {
+func (c *Client) Login(proxyUser, proxyPassword, proxyURL string, proxyPort int, protocol string) (Login, error) {
 	req := Login{
 		UserInfo: xtream.UserInfo{
 			Username:             proxyUser,
@@ -52,7 +52,7 @@ func (c *Client) Login(proxyUser, proxyPassword, proxyURL string, proxyPort int)
 			URL:          proxyURL,
 			Port:         proxyPort,
 			HTTPSPort:    proxyPort,
-			Protocol:     c.ServerInfo.Protocol,
+			Protocol:     protocol,
 			RTMPPort:     proxyPort,
 			Timezone:     c.ServerInfo.Timezone,
 			TimestampNow: c.ServerInfo.TimestampNow,

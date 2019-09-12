@@ -40,7 +40,7 @@ func (p *proxy) xtreamGet(c *gin.Context) {
 		return
 	}
 
-	newM3U, err := proxyM3U.ReplaceURL(&playlist, p.User, p.Password, p.HostConfig)
+	newM3U, err := proxyM3U.ReplaceURL(&playlist, p.User, p.Password, p.HostConfig, p.HTTPS)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
 		return
@@ -82,6 +82,11 @@ func (p *proxy) xtreamPlayerAPI(c *gin.Context, q url.Values) {
 		action = q["action"][0]
 	}
 
+	protocol := "http"
+	if p.HTTPS {
+		protocol = "https"
+	}
+
 	client, err := xtreamapi.New(p.XtreamUser, p.XtreamPassword, p.XtreamBaseURL)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
@@ -116,7 +121,7 @@ func (p *proxy) xtreamPlayerAPI(c *gin.Context, q url.Values) {
 		}
 		respBody, err = client.GetSeriesInfo(q["series_id"][0])
 	default:
-		respBody, err = client.Login(p.User, p.Password, "http://"+p.HostConfig.Hostname, int(p.HostConfig.Port))
+		respBody, err = client.Login(p.User, p.Password, protocol+"://"+p.HostConfig.Hostname, int(p.HostConfig.Port), protocol)
 	}
 
 	log.Printf("[iptv-proxy] %v | %s |Action\t%s\n", time.Now().Format("2006/01/02 - 15:04:05"), c.ClientIP(), action)

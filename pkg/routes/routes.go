@@ -158,7 +158,7 @@ func (p *proxy) appAuthenticate(c *gin.Context) {
 }
 
 func initm3u(p *config.ProxyConfig) ([]byte, error) {
-	playlist, err := proxyM3U.ReplaceURL(p.Playlist, p.User, p.Password, p.HostConfig)
+	playlist, err := proxyM3U.ReplaceURL(p.Playlist, p.User, p.Password, p.HostConfig, p.HTTPS)
 	if err != nil {
 		return nil, err
 	}
