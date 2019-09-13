@@ -150,6 +150,76 @@ Or
 % docker-compose up -d
 ```
 
+### TLS - https with traefik
+
+Put files of `./traekik` folder in root repo
+
+
+`docker-compose` sample with traefik:
+```Yaml
+version: "3"
+services:
+  iptv-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # If your are using local m3u file instead of m3u remote file
+      # put your m3u file in this folder
+      - ./iptv:/root/iptv
+    container_name: "iptv-proxy"
+    restart: on-failure
+    exospose:
+      # have to be the same as ENV variable PORT
+      - 443
+    labels:
+      - "traefik.enable=true"
+      - "traefik.frontend.rule=Host:iptv.proxyexample.xyz"
+    environment:
+      # if you are using m3u remote file
+      # M3U_URL: https://example.com/iptvfile.m3u
+      M3U_URL: /root/iptv/iptv.m3u
+      # Port to expose the IPTVs endpoints
+      PORT: 443
+      # Hostname or IP to expose the IPTVs endpoints (for machine not for docker)
+      HOSTNAME: iptv.proxyexample.xyz
+      GIN_MODE: release
+      # Inportant to activate https protocol on proxy links
+      HTTPS: 1
+      ## Xtream-code proxy configuration
+      XTREAM_USER: xtream_user
+      XTREAM_PASSWORD: xtream_password
+      XTREAM_BASE_URL: "http://example.tv:8080"
+      #will be used for m3u and xtream auth poxy
+      USER: test
+      PASSWORD: testpassword
+
+  traefik:
+    restart: unless-stopped
+    image: traefik
+    read_only: true
+    command:  --web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./acme.json:/acme.json
+      - ./traefik.toml:/traefik.toml
+
+```
+
+Replace `iptv.proxyexample.xyz` in `docker-compose.yml` and `traefik.toml` with your desired domain.
+
+```Shell
+$ touch acme.json && chmod 600 acme.json
+```
+
+
+```Shell
+$ docker-compose up -d
+```
+
 ## TODO
 
 there is unsafe auth just for testing.

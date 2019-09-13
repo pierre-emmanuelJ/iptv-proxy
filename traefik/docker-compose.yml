@@ -1,0 +1,47 @@
+version: "3"
+services:
+  iptv-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # If your are using local m3u file instead of m3u remote file
+      # put your m3u file in this folder
+      - ./iptv:/root/iptv
+    container_name: "iptv-proxy"
+    restart: on-failure
+    expose:
+       # have to be the same as ENV variable PORT
+      - 443
+    labels:
+      - "traefik.enable=true"
+      - "traefik.frontend.rule=Host:iptv.proxyexample.com"
+    environment:
+      # if you are using m3u remote file
+      # M3U_URL: https://example.com/iptvfile.m3u
+      M3U_URL: "http://provider.example.tv:25555/get.php?..."
+      # Port to expose the IPTVs endpoints
+      PORT: 443
+      # Hostname or IP to expose the IPTVs endpoints (for machine not for docker)
+      HOSTNAME: iptv.proxyexample.com
+      GIN_MODE: release
+      ## Xtream-code proxy configuration
+      XTREAM_USER: xtream_user
+      XTREAM_PASSWORD: xtream_password
+      XTREAM_BASE_URL: "http://provider.example.tv:8080"
+      HTTPS: 1
+      #will be used for m3u and xtream auth poxy
+      USER: test
+      PASSWORD: testpassword
+  traefik:
+    restart: unless-stopped
+    image: traefik
+    read_only: true
+    command:  --web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./acme.json:/acme.json
+      - ./traefik.toml:/traefik.toml
