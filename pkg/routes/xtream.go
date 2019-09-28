@@ -65,12 +65,19 @@ func (p *proxy) xtreamGet(c *gin.Context) {
 	}
 
 	// XXX Add cache per url and store it on the local storage or key/value storage e.g: etcd, redis...
+	lock.RLock()
 	if xtreamM3uCacheLastURL != m3uURL.String() {
+		log.Printf("[iptv-proxy] %v | %s | xtream cache m3u file\n", time.Now().Format("2006/01/02 - 15:04:05"), c.ClientIP())
+		lock.RUnlock()
+		lock.Lock()
 		xtreamM3uCacheLastURL = m3uURL.String()
+		lock.Unlock()
 		if err := p.cacheXtreamM3u(m3uURL); err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
+	} else {
+		lock.RUnlock()
 	}
 
 	c.Header("Content-Disposition", "attachment; filename=\"iptv.m3u\"")
