@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +15,35 @@ import (
 	proxyM3U "github.com/pierre-emmanuelJ/iptv-proxy/pkg/m3u"
 	xtreamapi "github.com/pierre-emmanuelJ/iptv-proxy/pkg/xtream-proxy"
 )
+
+// XXX Add one cache per url and store it on the local storage or key/value storage e.g: etcd, redis...
+// and remove that dirty globals
+var xtreamM3uCache []byte
+var xtreamM3uCacheLastURL string
+var lock = sync.RWMutex{}
+
+func (p *proxy) cacheXtreamM3u(m3uURL *url.URL) error {
+	playlist, err := m3u.Parse(m3uURL.String())
+	if err != nil {
+		return err
+	}
+
+	newM3U, err := proxyM3U.ReplaceURL(&playlist, p.User, p.Password, p.HostConfig, p.HTTPS)
+	if err != nil {
+		return err
+	}
+
+	result, err := proxyM3U.Marshall(newM3U)
+	if err != nil {
+		return err
+	}
+
+	lock.Lock()
+	xtreamM3uCache = []byte(result)
+	lock.Unlock()
+
+	return nil
+}
 
 func (p *proxy) xtreamGet(c *gin.Context) {
 	rawURL := fmt.Sprintf("%s/get.php?username=%s&password=%s", p.XtreamBaseURL, p.XtreamUser, p.XtreamPassword)
@@ -34,26 +64,19 @@ func (p *proxy) xtreamGet(c *gin.Context) {
 		return
 	}
 
-	playlist, err := m3u.Parse(m3uURL.String())
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, err)
-		return
-	}
-
-	newM3U, err := proxyM3U.ReplaceURL(&playlist, p.User, p.Password, p.HostConfig, p.HTTPS)
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, err)
-		return
-	}
-
-	result, err := proxyM3U.Marshall(newM3U)
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, err)
-		return
+	// XXX Add cache per url and store it on the local storage or key/value storage e.g: etcd, redis...
+	if xtreamM3uCacheLastURL != m3uURL.String() {
+		xtreamM3uCacheLastURL = m3uURL.String()
+		if err := p.cacheXtreamM3u(m3uURL); err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
 	}
 
 	c.Header("Content-Disposition", "attachment; filename=\"iptv.m3u\"")
-	c.Data(http.StatusOK, "application/octet-stream", []byte(result))
+	lock.RLock()
+	c.Data(http.StatusOK, "application/octet-stream", xtreamM3uCache)
+	lock.RUnlock()
 }
 
 func (p *proxy) xtreamPlayerAPIGET(c *gin.Context) {
