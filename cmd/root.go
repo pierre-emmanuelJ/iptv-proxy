@@ -25,9 +25,13 @@ var rootCmd = &cobra.Command{
 	Short: "A brief description of your application",
 	Run: func(cmd *cobra.Command, args []string) {
 		m3uURL := viper.GetString("m3u-url")
-		playlist, err := m3u.Parse(m3uURL)
-		if err != nil {
-			log.Fatal(err)
+		var err error
+		var playlist m3u.Playlist
+		if m3uURL != "" {
+			playlist, err = m3u.Parse(m3uURL)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 
 		remoteHostURL, err := url.Parse(m3uURL)
@@ -72,7 +76,7 @@ func init() {
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "iptv-proxy-config", "C", "config file (default is $HOME/.iptv-proxy.yaml)")
-	rootCmd.Flags().String("m3u-url", "http://example.com/iptv.m3u", "iptv m3u file")
+	rootCmd.Flags().StringP("m3u-url", "u", "", `iptv m3u file or url e.g: "http://example.com/iptv.m3u"`)
 	rootCmd.Flags().Int64("port", 8080, "Port to expose the IPTVs endpoints")
 	rootCmd.Flags().String("hostname", "", "Hostname or IP to expose the IPTVs endpoints")
 	rootCmd.Flags().BoolP("https", "", false, "Activate https for urls proxy")

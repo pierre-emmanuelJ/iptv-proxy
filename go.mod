@@ -10,3 +10,5 @@ require (
 	github.com/spf13/viper v1.3.1
 	github.com/tellytv/go.xtream-codes v0.0.0-20190427212115-45e8162ba888
 )
+
+go 1.13

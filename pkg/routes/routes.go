@@ -30,9 +30,14 @@ type proxy struct {
 func Serve(proxyConfig *config.ProxyConfig) error {
 	router := gin.Default()
 	router.Use(cors.Default())
-	newM3U, err := initm3u(proxyConfig)
-	if err != nil {
-		return err
+
+	newM3U := []byte{}
+	var err error
+	if len(proxyConfig.Playlist.Tracks) > 0 {
+		newM3U, err = initm3u(proxyConfig)
+		if err != nil {
+			return err
+		}
 	}
 	Routes(proxyConfig, router.Group("/"), newM3U)
 
