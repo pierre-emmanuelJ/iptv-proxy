@@ -1,11 +1,13 @@
 package routes
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -18,8 +20,7 @@ import (
 
 // XXX Add one cache per url and store it on the local storage or key/value storage e.g: etcd, redis...
 // and remove that dirty globals
-var xtreamM3uCache []byte
-var xtreamM3uCacheLastURL string
+var xtreamM3uCache map[string]string = map[string]string{}
 var lock = sync.RWMutex{}
 
 func (p *proxy) cacheXtreamM3u(m3uURL *url.URL) error {
@@ -39,10 +40,25 @@ func (p *proxy) cacheXtreamM3u(m3uURL *url.URL) error {
 	}
 
 	lock.Lock()
-	xtreamM3uCache = []byte(result)
+	path, err := writeCacheTmp([]byte(result), m3uURL.String())
+	if err != nil {
+		return err
+	}
+
+	xtreamM3uCache[m3uURL.String()] = path
 	lock.Unlock()
 
 	return nil
+}
+
+func writeCacheTmp(data []byte, url string) (string, error) {
+	filename := base64.StdEncoding.EncodeToString([]byte(url))
+	path := filepath.Join("/tmp", filename)
+	if err := ioutil.WriteFile(path, data, 0644); err != nil {
+		return "", err
+	}
+
+	return path, nil
 }
 
 func (p *proxy) xtreamGet(c *gin.Context) {
@@ -66,12 +82,10 @@ func (p *proxy) xtreamGet(c *gin.Context) {
 
 	// XXX Add cache per url and store it on the local storage or key/value storage e.g: etcd, redis...
 	lock.RLock()
-	if xtreamM3uCacheLastURL != m3uURL.String() {
+	_, ok := xtreamM3uCache[m3uURL.String()]
+	if !ok {
 		log.Printf("[iptv-proxy] %v | %s | xtream cache m3u file\n", time.Now().Format("2006/01/02 - 15:04:05"), c.ClientIP())
 		lock.RUnlock()
-		lock.Lock()
-		xtreamM3uCacheLastURL = m3uURL.String()
-		lock.Unlock()
 		if err := p.cacheXtreamM3u(m3uURL); err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
@@ -82,8 +96,15 @@ func (p *proxy) xtreamGet(c *gin.Context) {
 
 	c.Header("Content-Disposition", "attachment; filename=\"iptv.m3u\"")
 	lock.RLock()
-	c.Data(http.StatusOK, "application/octet-stream", xtreamM3uCache)
+	path := xtreamM3uCache[m3uURL.String()]
 	lock.RUnlock()
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+	c.Data(http.StatusOK, "application/octet-stream", data)
+
 }
 
 func (p *proxy) xtreamPlayerAPIGET(c *gin.Context) {
