@@ -45,13 +45,14 @@ var rootCmd = &cobra.Command{
 				Hostname: viper.GetString("hostname"),
 				Port:     viper.GetInt64("port"),
 			},
-			RemoteURL:      remoteHostURL,
-			XtreamUser:     viper.GetString("xtream-user"),
-			XtreamPassword: viper.GetString("xtream-password"),
-			XtreamBaseURL:  viper.GetString("xtream-base-url"),
-			User:           viper.GetString("user"),
-			Password:       viper.GetString("password"),
-			HTTPS:          viper.GetBool("https"),
+			RemoteURL:          remoteHostURL,
+			XtreamUser:         viper.GetString("xtream-user"),
+			XtreamPassword:     viper.GetString("xtream-password"),
+			XtreamBaseURL:      viper.GetString("xtream-base-url"),
+			M3UCacheExpiration: viper.GetInt("m3u-cache-expiration"),
+			User:               viper.GetString("user"),
+			Password:           viper.GetString("password"),
+			HTTPS:              viper.GetBool("https"),
 		}
 
 		if e := routes.Serve(conf); e != nil {
@@ -85,6 +86,7 @@ func init() {
 	rootCmd.Flags().String("xtream-user", "xtream_user", "Xtream-code user login")
 	rootCmd.Flags().String("xtream-password", "xtream_password", "Xtream-code password login")
 	rootCmd.Flags().String("xtream-base-url", "http://expample.tv:8080", "Xtream-code base url")
+	rootCmd.Flags().Int("m3u-cache-expiration", 24, "M3U cache expiration in hour")
 
 	if e := viper.BindPFlags(rootCmd.Flags()); e != nil {
 		log.Fatal("error binding PFlags to viper")
