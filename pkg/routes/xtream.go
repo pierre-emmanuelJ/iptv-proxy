@@ -23,7 +23,7 @@ type cacheMeta struct {
 	time.Time
 }
 
-// XXX Add one cache per url and store it on the local storage or key/value storage e.g: etcd, redis...
+// XXX Use key/value storage e.g: etcd, redis...
 // and remove that dirty globals
 var xtreamM3uCache map[string]cacheMeta = map[string]cacheMeta{}
 var lock = sync.RWMutex{}
@@ -85,7 +85,6 @@ func (p *proxy) xtreamGet(c *gin.Context) {
 		return
 	}
 
-	// XXX Add cache per url and store it on the local storage or key/value storage e.g: etcd, redis...
 	lock.RLock()
 	meta, ok := xtreamM3uCache[m3uURL.String()]
 	d := time.Now().Sub(meta.Time)
