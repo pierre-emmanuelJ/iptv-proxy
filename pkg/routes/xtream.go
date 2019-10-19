@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jamesnetherton/m3u"
+	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/config"
 	proxyM3U "github.com/pierre-emmanuelJ/iptv-proxy/pkg/m3u"
 	xtreamapi "github.com/pierre-emmanuelJ/iptv-proxy/pkg/xtream-proxy"
 )
@@ -34,7 +35,7 @@ func (p *proxy) cacheXtreamM3u(m3uURL *url.URL) error {
 		return err
 	}
 
-	newM3U, err := proxyM3U.ReplaceURL(&playlist, p.User, p.Password, p.HostConfig, p.HTTPS)
+	newM3U, err := xtreamReplaceURL(&playlist, p.User, p.Password, p.HostConfig, p.HTTPS)
 	if err != nil {
 		return err
 	}
@@ -66,6 +67,21 @@ func writeCacheTmp(data []byte, url string) (string, error) {
 	return path, nil
 }
 
+func (p *proxy) xtreamGetAuto(c *gin.Context) {
+	newQuery := c.Request.URL.Query()
+	q := p.RemoteURL.Query()
+	for k, v := range q {
+		if k == "username" || k == "password" {
+			continue
+		}
+
+		newQuery.Add(k, strings.Join(v, ","))
+	}
+	c.Request.URL.RawQuery = newQuery.Encode()
+
+	p.xtreamGet(c)
+}
+
 func (p *proxy) xtreamGet(c *gin.Context) {
 	rawURL := fmt.Sprintf("%s/get.php?username=%s&password=%s", p.XtreamBaseURL, p.XtreamUser, p.XtreamPassword)
 
@@ -78,6 +94,8 @@ func (p *proxy) xtreamGet(c *gin.Context) {
 
 		rawURL = fmt.Sprintf("%s&%s=%s", rawURL, k, strings.Join(v, ","))
 	}
+
+	println(rawURL)
 
 	m3uURL, err := url.Parse(rawURL)
 	if err != nil {
@@ -258,4 +276,42 @@ func (p *proxy) hlsrStream(c *gin.Context) {
 	}
 
 	stream(c, req)
+}
+
+func xtreamReplaceURL(playlist *m3u.Playlist, user, password string, hostConfig *config.HostConfiguration, https bool) (*m3u.Playlist, error) {
+	result := make([]m3u.Track, 0, len(playlist.Tracks))
+	for _, track := range playlist.Tracks {
+		oriURL, err := url.Parse(track.URI)
+		if err != nil {
+			return nil, err
+		}
+
+		protocol := "http"
+		if https {
+			protocol = "https"
+		}
+
+		id := filepath.Base(oriURL.Path)
+
+		uri := fmt.Sprintf(
+			"%s://%s:%d/%s/%s/%s",
+			protocol,
+			hostConfig.Hostname,
+			hostConfig.Port,
+			user,
+			password,
+			id,
+		)
+		destURL, err := url.Parse(uri)
+		if err != nil {
+			return nil, err
+		}
+
+		track.URI = destURL.String()
+		result = append(result, track)
+	}
+
+	return &m3u.Playlist{
+		Tracks: result,
+	}, nil
 }

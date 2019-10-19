@@ -22,7 +22,7 @@ var cfgFile string
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "iptv-proxy",
-	Short: "A brief description of your application",
+	Short: "Reverse proxy on iptv m3u file and xtream codes server api",
 	Run: func(cmd *cobra.Command, args []string) {
 		m3uURL := viper.GetString("m3u-url")
 		var err error
@@ -39,6 +39,27 @@ var rootCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
+		xtreamUser := viper.GetString("xtream-user")
+		xtreamPassword := viper.GetString("xtream-password")
+		xtreamBaseURL := viper.GetString("xtream-base-url")
+
+		var username, password string
+		if strings.Contains(m3uURL, "/get.php") {
+			username = remoteHostURL.Query().Get("username")
+			password = remoteHostURL.Query().Get("password")
+		}
+
+		if xtreamBaseURL == "" && xtreamPassword == "" && xtreamUser == "" {
+			if username != "" && password != "" {
+				log.Printf("[iptv-proxy] INFO: It's seams you are using an Xtream provider!")
+
+				xtreamUser = username
+				xtreamPassword = password
+				xtreamBaseURL = fmt.Sprintf("%s://%s", remoteHostURL.Scheme, remoteHostURL.Host)
+				log.Printf("[iptv-proxy] INFO: xtream service enable with xtream base url: %q xtream username: %q xtream password: %q", xtreamBaseURL, xtreamUser, xtreamPassword)
+			}
+		}
+
 		conf := &config.ProxyConfig{
 			Playlist: &playlist,
 			HostConfig: &config.HostConfiguration{
@@ -46,9 +67,9 @@ var rootCmd = &cobra.Command{
 				Port:     viper.GetInt64("port"),
 			},
 			RemoteURL:          remoteHostURL,
-			XtreamUser:         viper.GetString("xtream-user"),
-			XtreamPassword:     viper.GetString("xtream-password"),
-			XtreamBaseURL:      viper.GetString("xtream-base-url"),
+			XtreamUser:         xtreamUser,
+			XtreamPassword:     xtreamPassword,
+			XtreamBaseURL:      xtreamBaseURL,
 			M3UCacheExpiration: viper.GetInt("m3u-cache-expiration"),
 			User:               viper.GetString("user"),
 			Password:           viper.GetString("password"),
@@ -83,9 +104,9 @@ func init() {
 	rootCmd.Flags().BoolP("https", "", false, "Activate https for urls proxy")
 	rootCmd.Flags().String("user", "usertest", "user UNSAFE(temp auth to access proxy)")
 	rootCmd.Flags().String("password", "passwordtest", "password UNSAFE(auth to access m3u proxy and xtream proxy)")
-	rootCmd.Flags().String("xtream-user", "xtream_user", "Xtream-code user login")
-	rootCmd.Flags().String("xtream-password", "xtream_password", "Xtream-code password login")
-	rootCmd.Flags().String("xtream-base-url", "http://expample.tv:8080", "Xtream-code base url")
+	rootCmd.Flags().String("xtream-user", "", "Xtream-code user login")
+	rootCmd.Flags().String("xtream-password", "", "Xtream-code password login")
+	rootCmd.Flags().String("xtream-base-url", "", "Xtream-code base url e.g(http://expample.tv:8080)")
 	rootCmd.Flags().Int("m3u-cache-expiration", 24, "M3U cache expiration in hour")
 
 	if e := viper.BindPFlags(rootCmd.Flags()); e != nil {

@@ -31,43 +31,58 @@ func Serve(proxyConfig *config.ProxyConfig) error {
 	router := gin.Default()
 	router.Use(cors.Default())
 
-	newM3U := []byte{}
-	var err error
-	if len(proxyConfig.Playlist.Tracks) > 0 {
-		newM3U, err = initm3u(proxyConfig)
-		if err != nil {
-			return err
-		}
-	}
-	Routes(proxyConfig, router.Group("/"), newM3U)
+	Routes(proxyConfig, router.Group("/"))
 
 	return router.Run(fmt.Sprintf(":%d", proxyConfig.HostConfig.Port))
 }
 
 // Routes adds the routes for the app to the RouterGroup r
-func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup, newM3U []byte) {
+func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup) {
 
 	p := &proxy{
 		proxyConfig,
 		nil,
-		newM3U,
+		nil,
+	}
+
+	//Xtream service endopoints
+	if p.ProxyConfig.XtreamBaseURL != "" {
+		r.GET("/get.php", p.authenticate, p.xtreamGet)
+		r.POST("/get.php", p.authenticate, p.xtreamGet)
+		r.GET("/player_api.php", p.authenticate, p.xtreamPlayerAPIGET)
+		r.POST("/player_api.php", p.appAuthenticate, p.xtreamPlayerAPIPOST)
+		r.GET("/xmltv.php", p.authenticate, p.xtreamXMLTV)
+		r.GET(fmt.Sprintf("/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStream)
+		r.GET(fmt.Sprintf("/live/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStreamLive)
+		r.GET(fmt.Sprintf("/movie/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStreamMovie)
+		r.GET(fmt.Sprintf("/series/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStreamSeries)
+		r.GET("/hlsr/:token/:username/:password/:channel/:tmp/:extension", p.hlsrStream)
+
+		if strings.Contains(p.XtreamBaseURL, p.RemoteURL.Host) &&
+			p.XtreamUser == p.RemoteURL.Query().Get("username") &&
+			p.XtreamPassword == p.RemoteURL.Query().Get("password") {
+
+			r.GET("/iptv.m3u", p.authenticate, p.xtreamGetAuto)
+			// XXX Private need for external Android app
+			r.POST("/iptv.m3u", p.authenticate, p.xtreamGetAuto)
+
+			return
+		}
 	}
 
 	r.GET("/iptv.m3u", p.authenticate, p.getM3U)
 	// XXX Private need for external Android app
 	r.POST("/iptv.m3u", p.authenticate, p.getM3U)
 
-	//Xtream, iptv Smarter android app compatibility
-	r.GET("/get.php", p.authenticate, p.xtreamGet)
-	r.POST("/get.php", p.authenticate, p.xtreamGet)
-	r.GET("/player_api.php", p.authenticate, p.xtreamPlayerAPIGET)
-	r.POST("/player_api.php", p.appAuthenticate, p.xtreamPlayerAPIPOST)
-	r.GET("/xmltv.php", p.authenticate, p.xtreamXMLTV)
-	r.GET(fmt.Sprintf("/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStream)
-	r.GET(fmt.Sprintf("/live/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStreamLive)
-	r.GET(fmt.Sprintf("/movie/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStreamMovie)
-	r.GET(fmt.Sprintf("/series/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStreamSeries)
-	r.GET("/hlsr/:token/:username/:password/:channel/:tmp/:extension", p.hlsrStream)
+	newM3U := []byte{}
+	var err error
+	if len(proxyConfig.Playlist.Tracks) > 0 {
+		newM3U, err = initm3u(proxyConfig)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	p.newM3U = newM3U
 
 	for i, track := range proxyConfig.Playlist.Tracks {
 		oriURL, err := url.Parse(track.URI)
