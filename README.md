@@ -196,7 +196,7 @@ services:
 
   traefik:
     restart: unless-stopped
-    image: traefik
+    image: traefik:v1.7.16
     read_only: true
     command:  --web
     ports:
