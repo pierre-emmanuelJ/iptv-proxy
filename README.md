@@ -169,7 +169,7 @@ services:
       - ./iptv:/root/iptv
     container_name: "iptv-proxy"
     restart: on-failure
-    exospose:
+    expose:
       # have to be the same as ENV variable PORT
       - 443
     labels:
