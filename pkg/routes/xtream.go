@@ -298,9 +298,9 @@ func xtreamReplaceURL(playlist *m3u.Playlist, user, password string, hostConfig 
 			protocol,
 			hostConfig.Hostname,
 			hostConfig.Port,
-			user,
-			password,
-			id,
+			url.QueryEscape(user),
+			url.QueryEscape(password),
+			url.QueryEscape(id),
 		)
 		destURL, err := url.Parse(uri)
 		if err != nil {

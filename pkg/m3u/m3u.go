@@ -13,7 +13,7 @@ func Marshall(p *m3u.Playlist) (string, error) {
 	result := "#EXTM3U\n"
 	for _, track := range p.Tracks {
 		result += "#EXTINF:"
-		result += fmt.Sprintf("%d ", track.Length)
+		result += fmt.Sprintf("%d, ", track.Length)
 		for i := range track.Tags {
 			if i == len(track.Tags)-1 {
 				result += fmt.Sprintf("%s=%q,", track.Tags[i].Name, track.Tags[i].Value)
@@ -46,9 +46,9 @@ func ReplaceURL(playlist *m3u.Playlist, user, password string, hostConfig *confi
 			protocol,
 			hostConfig.Hostname,
 			hostConfig.Port,
-			oriURL.Path,
-			user,
-			password,
+			oriURL.EscapedPath(),
+			url.QueryEscape(user),
+			url.QueryEscape(password),
 		)
 		destURL, err := url.Parse(uri)
 		if err != nil {
