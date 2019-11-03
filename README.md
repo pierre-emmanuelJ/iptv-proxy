@@ -40,7 +40,6 @@ start proxy server example:
 iptv-proxy --m3u-url http://example.com/get.php?username=user&password=pass&type=m3u_plus&output=m3u8 \
              --port 8080 \
              --hostname poxyexample.com \
-             ##### UNSAFE AUTH TODO ADD REAL AUTH
              --user test \
              --password passwordtest
 ```
@@ -71,7 +70,6 @@ http://poxyserver.com:8080/15/test/4?username=test&password=passwordtest
              --xtream-user xtream_user \
              --xtream-password xtream_password \
              --xtream-base-url http://example.com:1234 \
-             ##### UNSAFE AUTH TODO ADD REAL AUTH
              --user test \
              --password passwordtest
              
@@ -139,7 +137,6 @@ Or
       XTREAM_USER: xtream_user
       XTREAM_PASSWORD: xtream_password
       XTREAM_BASE_URL: "http://example.com:1234"
-      ##### UNSAFE AUTH TODO ADD REAL AUTH
       USER: test
       PASSWORD: testpassword
 ```
@@ -222,9 +219,9 @@ $ docker-compose up -d
 
 ## TODO
 
-there is unsafe auth just for testing.
-change with real auth with database and user management
-and auth with token
+there is basic auth just for testing.
+change with a real auth with database and user management
+and auth with token...
 
 **ENJOY!**
 
