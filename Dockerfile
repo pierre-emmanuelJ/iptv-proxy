@@ -1,4 +1,4 @@
-FROM golang:1.11.5-alpine
+FROM golang:1.13.1-alpine
 
 WORKDIR /go/src/github.com/pierre-emmanuelJ/iptv-proxy
 COPY . .

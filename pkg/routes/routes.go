@@ -56,7 +56,7 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup) {
 		r.GET(fmt.Sprintf("/live/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStreamLive)
 		r.GET(fmt.Sprintf("/movie/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStreamMovie)
 		r.GET(fmt.Sprintf("/series/%s/%s/:id", proxyConfig.User, proxyConfig.Password), p.xtreamStreamSeries)
-		r.GET("/hlsr/:token/:username/:password/:channel/:tmp/:extension", p.hlsrStream)
+		r.GET(fmt.Sprintf("/hlsr/:token/%s/%s/:channel/:hash/:chunk", proxyConfig.User, proxyConfig.Password), p.hlsrStream)
 
 		if strings.Contains(p.XtreamBaseURL, p.RemoteURL.Host) &&
 			p.XtreamUser == p.RemoteURL.Query().Get("username") &&
@@ -106,19 +106,57 @@ func (p *proxy) getM3U(c *gin.Context) {
 func (p *proxy) reverseProxy(c *gin.Context) {
 	rpURL, err := url.Parse(p.Track.URI)
 	if err != nil {
-		log.Fatal(err)
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
 	}
 
-	stream(c, rpURL)
+	p.stream(c, rpURL)
 }
 
-func stream(c *gin.Context, oriURL *url.URL) {
-	resp, err := http.Get(oriURL.String())
+func (p *proxy) stream(c *gin.Context, oriURL *url.URL) {
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	resp, err := client.Get(oriURL.String())
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
 		return
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusFound {
+		location, err := resp.Location()
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, err)
+			return
+		}
+		id := c.Param("id")
+		if strings.Contains(location.String(), id) {
+			hlsChannelsRedirectURLLock.Lock()
+			hlsChannelsRedirectURL[id] = *location
+			hlsChannelsRedirectURLLock.Unlock()
+
+			hlsResp, err := http.Get(location.String())
+			if err != nil {
+				c.AbortWithError(http.StatusInternalServerError, err)
+				return
+			}
+			defer hlsResp.Body.Close()
+
+			b, err := ioutil.ReadAll(hlsResp.Body)
+			if err != nil {
+				c.AbortWithError(http.StatusInternalServerError, err)
+				return
+			}
+			body := string(b)
+			body = strings.ReplaceAll(body, "/"+p.XtreamUser+"/"+p.XtreamPassword+"/", "/"+p.User+"/"+p.Password+"/")
+			c.Data(http.StatusOK, hlsResp.Header.Get("Content-Type"), []byte(body))
+			return
+		}
+	}
 
 	copyHTTPHeader(c, resp.Header)
 	c.Status(resp.StatusCode)

@@ -2,6 +2,7 @@ package routes
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -24,10 +25,13 @@ type cacheMeta struct {
 	time.Time
 }
 
+var hlsChannelsRedirectURL map[string]url.URL = map[string]url.URL{}
+var hlsChannelsRedirectURLLock = sync.RWMutex{}
+
 // XXX Use key/value storage e.g: etcd, redis...
 // and remove that dirty globals
 var xtreamM3uCache map[string]cacheMeta = map[string]cacheMeta{}
-var lock = sync.RWMutex{}
+var xtreamM3uCacheLock = sync.RWMutex{}
 
 func (p *proxy) cacheXtreamM3u(m3uURL *url.URL) error {
 	playlist, err := m3u.Parse(m3uURL.String())
@@ -45,14 +49,14 @@ func (p *proxy) cacheXtreamM3u(m3uURL *url.URL) error {
 		return err
 	}
 
-	lock.Lock()
+	xtreamM3uCacheLock.Lock()
 	path, err := writeCacheTmp([]byte(result), m3uURL.String())
 	if err != nil {
 		return err
 	}
 
 	xtreamM3uCache[m3uURL.String()] = cacheMeta{path, time.Now()}
-	lock.Unlock()
+	xtreamM3uCacheLock.Unlock()
 
 	return nil
 }
@@ -103,24 +107,24 @@ func (p *proxy) xtreamGet(c *gin.Context) {
 		return
 	}
 
-	lock.RLock()
+	xtreamM3uCacheLock.RLock()
 	meta, ok := xtreamM3uCache[m3uURL.String()]
 	d := time.Now().Sub(meta.Time)
 	if !ok || d.Hours() >= float64(p.M3UCacheExpiration) {
 		log.Printf("[iptv-proxy] %v | %s | xtream cache m3u file\n", time.Now().Format("2006/01/02 - 15:04:05"), c.ClientIP())
-		lock.RUnlock()
+		xtreamM3uCacheLock.RUnlock()
 		if err := p.cacheXtreamM3u(m3uURL); err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
 	} else {
-		lock.RUnlock()
+		xtreamM3uCacheLock.RUnlock()
 	}
 
 	c.Header("Content-Disposition", "attachment; filename=\"iptv.m3u\"")
-	lock.RLock()
+	xtreamM3uCacheLock.RLock()
 	path := xtreamM3uCache[m3uURL.String()].string
-	lock.RUnlock()
+	xtreamM3uCacheLock.RUnlock()
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
@@ -232,7 +236,7 @@ func (p *proxy) xtreamStream(c *gin.Context) {
 		return
 	}
 
-	stream(c, rpURL)
+	p.stream(c, rpURL)
 }
 
 func (p *proxy) xtreamStreamLive(c *gin.Context) {
@@ -243,7 +247,7 @@ func (p *proxy) xtreamStreamLive(c *gin.Context) {
 		return
 	}
 
-	stream(c, rpURL)
+	p.stream(c, rpURL)
 }
 
 func (p *proxy) xtreamStreamMovie(c *gin.Context) {
@@ -254,7 +258,7 @@ func (p *proxy) xtreamStreamMovie(c *gin.Context) {
 		return
 	}
 
-	stream(c, rpURL)
+	p.stream(c, rpURL)
 }
 
 func (p *proxy) xtreamStreamSeries(c *gin.Context) {
@@ -265,17 +269,38 @@ func (p *proxy) xtreamStreamSeries(c *gin.Context) {
 		return
 	}
 
-	stream(c, rpURL)
+	p.stream(c, rpURL)
 }
 
 func (p *proxy) hlsrStream(c *gin.Context) {
-	req, err := url.Parse(fmt.Sprintf("%s%s", p.XtreamBaseURL, c.Request.URL.String()))
+	hlsChannelsRedirectURLLock.RLock()
+	url, ok := hlsChannelsRedirectURL[c.Param("channel")+".m3u8"]
+	if !ok {
+		c.AbortWithError(http.StatusNotFound, errors.New("HSL redirect url not found"))
+		return
+	}
+	hlsChannelsRedirectURLLock.RUnlock()
+
+	req, err := url.Parse(
+		fmt.Sprintf(
+			"%s://%s/hlsr/%s/%s/%s/%s/%s/%s",
+			url.Scheme,
+			url.Host,
+			c.Param("token"),
+			p.XtreamUser,
+			p.XtreamPassword,
+			c.Param("channel"),
+			c.Param("hash"),
+			c.Param("chunk"),
+		),
+	)
+
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, err)
 		return
 	}
 
-	stream(c, req)
+	p.stream(c, req)
 }
 
 func xtreamReplaceURL(playlist *m3u.Playlist, user, password string, hostConfig *config.HostConfiguration, https bool) (*m3u.Playlist, error) {
