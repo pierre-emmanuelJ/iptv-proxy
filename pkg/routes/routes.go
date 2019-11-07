@@ -84,6 +84,7 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup) {
 	}
 	p.newM3U = newM3U
 
+	checkList := map[string]int8{}
 	for i, track := range proxyConfig.Playlist.Tracks {
 		oriURL, err := url.Parse(track.URI)
 		if err != nil {
@@ -94,7 +95,15 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup) {
 			&proxyConfig.Playlist.Tracks[i],
 			nil,
 		}
+		_, ok := checkList[oriURL.Path]
+		if ok {
+			log.Printf("[iptv-proxy] WARNING endpoint %q already exist, skipping it", oriURL.Path)
+			continue
+		}
+
 		r.GET(oriURL.Path, p.authenticate, tmp.reverseProxy)
+
+		checkList[oriURL.Path] = 0
 	}
 }
 
