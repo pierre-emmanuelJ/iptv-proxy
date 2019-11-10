@@ -2,6 +2,7 @@ package routes
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -123,6 +124,28 @@ func (p *proxy) reverseProxy(c *gin.Context) {
 }
 
 func (p *proxy) stream(c *gin.Context, oriURL *url.URL) {
+	id := c.Param("id")
+	if strings.HasSuffix(id, ".m3u8") {
+		p.hlsStream(c, oriURL)
+		return
+	}
+
+	resp, err := http.Get(oriURL.String())
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	copyHTTPHeader(c, resp.Header)
+	c.Status(resp.StatusCode)
+	c.Stream(func(w io.Writer) bool {
+		io.Copy(w, resp.Body)
+		return false
+	})
+}
+
+func (p *proxy) hlsStream(c *gin.Context, oriURL *url.URL) {
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
@@ -165,14 +188,11 @@ func (p *proxy) stream(c *gin.Context, oriURL *url.URL) {
 			c.Data(http.StatusOK, hlsResp.Header.Get("Content-Type"), []byte(body))
 			return
 		}
+		c.AbortWithError(http.StatusInternalServerError, errors.New("Unable to HLS stream"))
+		return
 	}
 
-	copyHTTPHeader(c, resp.Header)
 	c.Status(resp.StatusCode)
-	c.Stream(func(w io.Writer) bool {
-		io.Copy(w, resp.Body)
-		return false
-	})
 }
 
 func copyHTTPHeader(c *gin.Context, header http.Header) {
