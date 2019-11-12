@@ -2,7 +2,7 @@
 
 ## Description
 
-### M3u
+### M3U
 
 Iptv Proxy is a project to convert an iptv m3u file
 
@@ -10,9 +10,9 @@ into a web proxy server And give a new m3u file
 
 with the new routes to the proxy server
 
-### Xtream server api
+### Xtream code client api
 
-proxy on xtream server api
+proxy on xtream code client api
 
 support live, vod, series and full epg :rocket:
 
@@ -60,7 +60,7 @@ http://poxyserver.com:8080/14/test/3?username=test&password=passwordtest
 #EXTINF:-1 tvg-ID="examplechanel4.com" tvg-name="chanel4" tvg-logo="http://ch.xyz/logo4.png" group-title="USA HD",CHANEL4-HD
 http://poxyserver.com:8080/15/test/4?username=test&password=passwordtest
 ```
-### Xtream code server api Example
+### Xtream code client api Example
 
 ```Bash
 % iptv-proxy --m3u-url http://example.com:1234/get.php?username=user&password=pass&type=m3u_plus&output=m3u8 \
