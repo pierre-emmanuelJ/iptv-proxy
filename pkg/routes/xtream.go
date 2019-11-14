@@ -198,6 +198,12 @@ func (p *proxy) xtreamPlayerAPI(c *gin.Context, q url.Values) {
 			return
 		}
 		respBody, err = client.GetSeriesInfo(q["series_id"][0])
+	case xtreamapi.GetShortEPG:
+		if len(q["stream_id"]) < 1 {
+			c.AbortWithError(http.StatusBadRequest, fmt.Errorf(`bad body url query parameters: missing "stream_id"`))
+			return
+		}
+		respBody, err = client.GetEPG(q["stream_id"][0])
 	default:
 		respBody, err = client.Login(p.User, p.Password, protocol+"://"+p.HostConfig.Hostname, int(p.HostConfig.Port), protocol)
 	}
