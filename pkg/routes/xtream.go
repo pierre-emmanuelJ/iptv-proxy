@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -199,6 +200,20 @@ func (p *proxy) xtreamPlayerAPI(c *gin.Context, q url.Values) {
 		}
 		respBody, err = client.GetSeriesInfo(q["series_id"][0])
 	case xtreamapi.GetShortEPG:
+		if len(q["stream_id"]) < 1 {
+			c.AbortWithError(http.StatusBadRequest, fmt.Errorf(`bad body url query parameters: missing "stream_id"`))
+			return
+		}
+		limit := 0
+		if len(q["limit"][0]) > 0 {
+			limit, err = strconv.Atoi(q["limit"][0])
+			if err != nil {
+				c.AbortWithError(http.StatusInternalServerError, err)
+				return
+			}
+		}
+		respBody, err = client.GetShortEPG(q["stream_id"][0], limit)
+	case xtreamapi.GetSimpleDataTable:
 		if len(q["stream_id"]) < 1 {
 			c.AbortWithError(http.StatusBadRequest, fmt.Errorf(`bad body url query parameters: missing "stream_id"`))
 			return

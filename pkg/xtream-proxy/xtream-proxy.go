@@ -14,6 +14,7 @@ const (
 	GetSeries           = "get_series"
 	GetSerieInfo        = "get_series_info"
 	GetShortEPG         = "get_short_epg"
+	GetSimpleDataTable  = "get_simple_data_table"
 )
 
 type Client struct {
