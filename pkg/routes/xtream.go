@@ -205,7 +205,7 @@ func (p *proxy) xtreamPlayerAPI(c *gin.Context, q url.Values) {
 			return
 		}
 		limit := 0
-		if len(q["limit"][0]) > 0 {
+		if len(q["limit"]) > 0 {
 			limit, err = strconv.Atoi(q["limit"][0])
 			if err != nil {
 				c.AbortWithError(http.StatusInternalServerError, err)
