@@ -1,6 +1,6 @@
 # Iptv Proxy
 
-[![Build Status](https://travis-ci.org/pierre-emmanuelJ//iptv-proxy.svg?branch=master)](https://travis-ci.org/pierre-emmanuelJ//iptv-proxy)
+[![Build Status](https://travis-ci.com/pierre-emmanuelJ/iptv-proxy.svg?branch=master)](https://travis-ci.com/pierre-emmanuelJ/iptv-proxy)
 
 ## Description
 
