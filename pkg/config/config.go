@@ -20,6 +20,8 @@ type ProxyConfig struct {
 	XtreamPassword     string
 	XtreamBaseURL      string
 	M3UCacheExpiration int
+	M3UFileName        string
+	CustomEndpoint     string
 	RemoteURL          *url.URL
 	HTTPS              bool
 	//XXX Very unsafe

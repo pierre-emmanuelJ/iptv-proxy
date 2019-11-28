@@ -46,6 +46,8 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup) {
 		nil,
 	}
 
+	r = r.Group(p.CustomEndpoint)
+
 	//Xtream service endopoints
 	if p.ProxyConfig.XtreamBaseURL != "" {
 		r.GET("/get.php", p.authenticate, p.xtreamGet)
@@ -63,17 +65,17 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup) {
 			p.XtreamUser == p.RemoteURL.Query().Get("username") &&
 			p.XtreamPassword == p.RemoteURL.Query().Get("password") {
 
-			r.GET("/iptv.m3u", p.authenticate, p.xtreamGetAuto)
-			// XXX Private need for external Android app
-			r.POST("/iptv.m3u", p.authenticate, p.xtreamGetAuto)
+			r.GET("/"+p.M3UFileName, p.authenticate, p.xtreamGetAuto)
+			// XXX Private need: for external Android app
+			r.POST("/"+p.M3UFileName, p.authenticate, p.xtreamGetAuto)
 
 			return
 		}
 	}
 
-	r.GET("/iptv.m3u", p.authenticate, p.getM3U)
-	// XXX Private need for external Android app
-	r.POST("/iptv.m3u", p.authenticate, p.getM3U)
+	r.GET("/"+p.M3UFileName, p.authenticate, p.getM3U)
+	// XXX Private need: for external Android app
+	r.POST("/"+p.M3UFileName, p.authenticate, p.getM3U)
 
 	newM3U := []byte{}
 	var err error
@@ -109,7 +111,7 @@ func Routes(proxyConfig *config.ProxyConfig, r *gin.RouterGroup) {
 }
 
 func (p *proxy) getM3U(c *gin.Context) {
-	c.Header("Content-Disposition", "attachment; filename=\"iptv.m3u\"")
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, p.M3UFileName))
 	c.Data(http.StatusOK, "application/octet-stream", p.newM3U)
 }
 

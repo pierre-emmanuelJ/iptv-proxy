@@ -122,7 +122,7 @@ func (p *proxy) xtreamGet(c *gin.Context) {
 		xtreamM3uCacheLock.RUnlock()
 	}
 
-	c.Header("Content-Disposition", "attachment; filename=\"iptv.m3u\"")
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, p.M3UFileName))
 	xtreamM3uCacheLock.RLock()
 	path := xtreamM3uCache[m3uURL.String()].string
 	xtreamM3uCacheLock.RUnlock()
