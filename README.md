@@ -4,23 +4,25 @@
 
 ## Description
 
+Iptv-Proxy is a project to proxyfie an m3u file
+and to proxyfie an Xtream iptv service (client API).
+
 ### M3U
 
-Iptv Proxy is a project to convert an iptv m3u file
+M3U service convert an iptv m3u file into a web proxy server.
 
-into a web proxy server And give a new m3u file
-
-with the new routes to the proxy server
+It's transform all the original tracks to an new url pointing on the proxy.
 
 ### Xtream code client api
 
-proxy on xtream code client api
+proxy on Xtream code (client API)
 
 support live, vod, series and full epg :rocket:
 
 ### M3u Example
 
-original iptv m3u file
+Original iptv m3u file
+
 ```m3u
 #EXTM3U
 #EXTINF:-1 tvg-ID="examplechanel1.com" tvg-name="chanel1" tvg-logo="http://ch.xyz/logo1.png" group-title="USA HD",CHANEL1-HD
@@ -33,11 +35,12 @@ http://iptvexample.net:1234/14/test/3
 http://iptvexample.net:1234/15/test/4
 ```
 
-What m3u proxy IPTV do:
+What M3U proxy IPTV do
  - convert chanels url to new endpoints
- - convert original m3u file with new routes
+ - convert original m3u file with new routes pointing to the proxy
 
-start proxy server example:
+Start proxy server example
+
 ```Bash
 iptv-proxy --m3u-url http://example.com/get.php?username=user&password=pass&type=m3u_plus&output=m3u8 \
              --port 8080 \
@@ -47,10 +50,11 @@ iptv-proxy --m3u-url http://example.com/get.php?username=user&password=pass&type
 ```
 
 
- that's give you the m3u file on a specific endpoint:
+ That's give you an m3u file on a specific endpoint `iptv.m3u` in our example
  
  `http://poxyserver.com:8080/iptv.m3u?username=test&password=passwordtest`
 
+All the new routes pointing on your proxy server
 ```m3u
 #EXTM3U
 #EXTINF:-1 tvg-ID="examplechanel1.com" tvg-name="chanel1" tvg-logo="http://ch.xyz/logo1.png" group-title="USA HD",CHANEL1-HD
@@ -62,7 +66,7 @@ http://poxyserver.com:8080/14/test/3?username=test&password=passwordtest
 #EXTINF:-1 tvg-ID="examplechanel4.com" tvg-name="chanel4" tvg-logo="http://ch.xyz/logo4.png" group-title="USA HD",CHANEL4-HD
 http://poxyserver.com:8080/15/test/4?username=test&password=passwordtest
 ```
-### Xtream code client api Example
+### Xtream code client API example
 
 ```Bash
 % iptv-proxy --m3u-url http://example.com:1234/get.php?username=user&password=pass&type=m3u_plus&output=m3u8 \
@@ -77,17 +81,21 @@ http://poxyserver.com:8080/15/test/4?username=test&password=passwordtest
              
 ```
 
-What xtream proxy do:
+What Xtream proxy do
+
  - convert xtream `xtream-user ` and `xtream-password` into new `user` and `password`
  - convert `xtream-base-url` with `hostname` and `port`
  
- original xtream credentials:
+Original xtream credentials
+ 
  ```
  user: xtream_user
  password: xtream_password
  base-url: http://example.com:1234
  ```
- new xtream credentials:
+ 
+New xtream credentials
+
  ```
  user: test
  password: passwordtest
@@ -97,7 +105,7 @@ What xtream proxy do:
  All xtream live, streams, vod, series... are poxyfied! 
  
  
- You can get the m3u file with the xtream api request:
+ You can get the m3u file with the original Xtream api request:
  ```
  http://poxyexample.com:8080/get.php?username=test&password=passwordtest&type=m3u_plus&output=ts
  ```
@@ -105,17 +113,15 @@ What xtream proxy do:
 
 ## Installation
 
-### Without Docker
-
 Download lasted [release](https://github.com/pierre-emmanuelJ/iptv-proxy/releases)
 
 Or
 
 `% go install` in root repository
 
-### With Docker
+## With Docker
 
-#### Prerequisite
+### Prerequisite
 
  - Add an m3u URL in `docker-compose.yml` or add local file in `iptv` folder
  - `HOSTNAME` and `PORT` to expose
@@ -143,13 +149,13 @@ Or
       PASSWORD: testpassword
 ```
 
-#### Start
+### Start
 
 ```
 % docker-compose up -d
 ```
 
-### TLS - https with traefik
+## TLS - https with traefik
 
 Put files of `./traekik` folder in root repo
 
