@@ -74,6 +74,8 @@ var rootCmd = &cobra.Command{
 			User:               viper.GetString("user"),
 			Password:           viper.GetString("password"),
 			HTTPS:              viper.GetBool("https"),
+			M3UFileName:        viper.GetString("m3u-file-name"),
+			CustomEndpoint:     viper.GetString("custom-endpoint"),
 		}
 
 		if e := routes.Serve(conf); e != nil {
@@ -99,6 +101,8 @@ func init() {
 	// will be global for your application.
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "iptv-proxy-config", "C", "config file (default is $HOME/.iptv-proxy.yaml)")
 	rootCmd.Flags().StringP("m3u-url", "u", "", `iptv m3u file or url e.g: "http://example.com/iptv.m3u"`)
+	rootCmd.Flags().StringP("m3u-file-name", "", "iptv.m3u", `name of the new proxified m3u file e.g "http://poxy.com/iptv.m3u"`)
+	rootCmd.Flags().StringP("custom-endpoint", "", "", `custom endpoint "http://poxy.com/<custom-endpoint>/iptv.m3u"`)
 	rootCmd.Flags().Int64("port", 8080, "Port to expose the IPTVs endpoints")
 	rootCmd.Flags().String("hostname", "", "Hostname or IP to expose the IPTVs endpoints")
 	rootCmd.Flags().BoolP("https", "", false, "Activate https for urls proxy")
