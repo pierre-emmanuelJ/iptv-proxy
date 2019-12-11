@@ -11,6 +11,8 @@ github.com/gin-gonic/gin/json
 github.com/gin-gonic/gin/render
 # github.com/golang/protobuf v1.2.0
 github.com/golang/protobuf/proto
+# github.com/grafov/m3u8 v0.11.1
+github.com/grafov/m3u8
 # github.com/hashicorp/hcl v1.0.0
 github.com/hashicorp/hcl
 github.com/hashicorp/hcl/hcl/ast
