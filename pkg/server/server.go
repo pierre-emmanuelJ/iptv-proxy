@@ -117,7 +117,7 @@ func (c *Config) replaceURL(uri string, xtream bool) (string, error) {
 		customEnd = fmt.Sprintf("/%s", customEnd)
 	}
 
-	path := oriURL.EscapedPath()
+	path := oriURL.RawPath
 	if xtream {
 		path = fmt.Sprintf("/%s", filepath.Base(path))
 	}
@@ -133,10 +133,10 @@ func (c *Config) replaceURL(uri string, xtream bool) (string, error) {
 		url.QueryEscape(path),
 	)
 
-	_, err = url.Parse(newURI)
+	newURL, err := url.Parse(newURI)
 	if err != nil {
 		return "", err
 	}
 
-	return newURI, nil
+	return newURL.String(), nil
 }
