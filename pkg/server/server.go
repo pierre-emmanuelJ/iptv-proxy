@@ -132,10 +132,11 @@ func (c *Config) replaceURL(uri string, xtream bool) (string, error) {
 		url.QueryEscape(c.Password),
 		url.QueryEscape(path),
 	)
-	destURL, err := url.Parse(newURI)
+
+	_, err = url.Parse(newURI)
 	if err != nil {
 		return "", err
 	}
 
-	return destURL.String(), nil
+	return newURI, nil
 }
