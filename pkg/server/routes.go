@@ -50,14 +50,14 @@ func (c *Config) m3uRoutes(r *gin.RouterGroup) {
 
 	// List to verify duplicate entry endpoints
 	checkList := map[string]int8{}
-	for i, track := range c.playlist.Variants {
+	for i, track := range c.playlist.Tracks {
 		oriURL, err := url.Parse(track.URI)
 		if err != nil {
 			return
 		}
 		trackConfig := &Config{
 			ProxyConfig: c.ProxyConfig,
-			track:       c.playlist.Variants[i],
+			track:       &c.playlist.Tracks[i],
 		}
 		_, ok := checkList[oriURL.Path]
 		if ok {
