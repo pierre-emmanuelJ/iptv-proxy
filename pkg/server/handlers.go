@@ -17,7 +17,9 @@ import (
 
 func (c *Config) getM3U(ctx *gin.Context) {
 	ctx.Header("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, c.M3UFileName))
-	ctx.Data(http.StatusOK, "application/octet-stream", nil)
+	ctx.Header("Content-Type", "application/octet-stream")
+
+	ctx.File(c.proxyfiedM3UPath)
 }
 
 func (c *Config) reverseProxy(ctx *gin.Context) {
@@ -112,7 +114,7 @@ func copyHTTPHeader(ctx *gin.Context, header http.Header) {
 type AuthRequest struct {
 	Username string `form:"username" binding:"required"`
 	Password string `form:"password" binding:"required"`
-} // XXX very unsafe
+}
 
 func (c *Config) authenticate(ctx *gin.Context) {
 	var authReq AuthRequest
@@ -120,7 +122,6 @@ func (c *Config) authenticate(ctx *gin.Context) {
 		ctx.AbortWithError(http.StatusBadRequest, err)
 		return
 	}
-	//XXX very unsafe
 	if c.ProxyConfig.User != authReq.Username || c.ProxyConfig.Password != authReq.Password {
 		ctx.AbortWithStatus(http.StatusUnauthorized)
 	}
@@ -143,7 +144,6 @@ func (c *Config) appAuthenticate(ctx *gin.Context) {
 		return
 	}
 	log.Printf("[iptv-proxy] %v | %s |App Auth\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP())
-	//XXX very unsafe
 	if c.ProxyConfig.User != q["username"][0] || c.ProxyConfig.Password != q["password"][0] {
 		ctx.AbortWithStatus(http.StatusUnauthorized)
 	}

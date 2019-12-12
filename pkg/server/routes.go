@@ -65,7 +65,7 @@ func (c *Config) m3uRoutes(r *gin.RouterGroup) {
 			continue
 		}
 
-		r.GET(oriURL.Path, c.authenticate, trackConfig.reverseProxy)
+		r.GET(fmt.Sprintf("/%s/%s/%s", c.User, c.Password, oriURL.Path), trackConfig.reverseProxy)
 
 		checkList[oriURL.Path] = 0
 	}

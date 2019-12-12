@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -16,8 +17,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jamesnetherton/m3u"
-	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/config"
-	proxyM3U "github.com/pierre-emmanuelJ/iptv-proxy/pkg/m3u"
 	xtreamapi "github.com/pierre-emmanuelJ/iptv-proxy/pkg/xtream-proxy"
 )
 
@@ -35,41 +34,31 @@ var xtreamM3uCache map[string]cacheMeta = map[string]cacheMeta{}
 var xtreamM3uCacheLock = sync.RWMutex{}
 
 func (c *Config) cacheXtreamM3u(m3uURL *url.URL) error {
+	xtreamM3uCacheLock.Lock()
 	playlist, err := m3u.Parse(m3uURL.String())
 	if err != nil {
 		return err
 	}
 
-	newM3U, err := xtreamReplaceURL(&playlist, c.User, c.Password, c.HostConfig, c.HTTPS)
+	tmp := c.playlist
+	c.playlist = &playlist
+
+	filename := base64.StdEncoding.EncodeToString([]byte(m3uURL.String()))
+	path := filepath.Join("/tmp", filename)
+	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
+	defer f.Close()
 
-	result, err := proxyM3U.Marshall(newM3U)
-	if err != nil {
+	if err := c.marshallInto(f, true); err != nil {
 		return err
 	}
-
-	xtreamM3uCacheLock.Lock()
-	path, err := writeCacheTmp([]byte(result), m3uURL.String())
-	if err != nil {
-		return err
-	}
-
 	xtreamM3uCache[m3uURL.String()] = cacheMeta{path, time.Now()}
+	c.playlist = tmp
 	xtreamM3uCacheLock.Unlock()
 
 	return nil
-}
-
-func writeCacheTmp(data []byte, url string) (string, error) {
-	filename := base64.StdEncoding.EncodeToString([]byte(url))
-	path := filepath.Join("/tmp", filename)
-	if err := ioutil.WriteFile(path, data, 0644); err != nil {
-		return "", err
-	}
-
-	return path, nil
 }
 
 func (c *Config) xtreamGetAuto(ctx *gin.Context) {
@@ -100,8 +89,6 @@ func (c *Config) xtreamGet(ctx *gin.Context) {
 		rawURL = fmt.Sprintf("%s&%s=%s", rawURL, k, strings.Join(v, ","))
 	}
 
-	println(rawURL)
-
 	m3uURL, err := url.Parse(rawURL)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, err)
@@ -126,13 +113,9 @@ func (c *Config) xtreamGet(ctx *gin.Context) {
 	xtreamM3uCacheLock.RLock()
 	path := xtreamM3uCache[m3uURL.String()].string
 	xtreamM3uCacheLock.RUnlock()
-	data, err := ioutil.ReadFile(path)
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err)
-		return
-	}
-	ctx.Data(http.StatusOK, "application/octet-stream", data)
+	ctx.Header("Content-Type", "application/octet-stream")
 
+	ctx.File(path)
 }
 
 func (c *Config) xtreamPlayerAPIGET(ctx *gin.Context) {
@@ -172,6 +155,7 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context, q url.Values) {
 		return
 	}
 
+	//TODO Move this part in xtream-proxy package.
 	var respBody interface{}
 
 	switch action {
@@ -322,42 +306,4 @@ func (c *Config) hlsrStream(ctx *gin.Context) {
 	}
 
 	c.stream(ctx, req)
-}
-
-func xtreamReplaceURL(playlist *m3u.Playlist, user, password string, hostConfig *config.HostConfiguration, https bool) (*m3u.Playlist, error) {
-	result := make([]m3u.Track, 0, len(playlist.Tracks))
-	for _, track := range playlist.Tracks {
-		oriURL, err := url.Parse(track.URI)
-		if err != nil {
-			return nil, err
-		}
-
-		protocol := "http"
-		if https {
-			protocol = "https"
-		}
-
-		id := filepath.Base(oriURL.Path)
-
-		uri := fmt.Sprintf(
-			"%s://%s:%d/%s/%s/%s",
-			protocol,
-			hostConfig.Hostname,
-			hostConfig.Port,
-			url.QueryEscape(user),
-			url.QueryEscape(password),
-			url.QueryEscape(id),
-		)
-		destURL, err := url.Parse(uri)
-		if err != nil {
-			return nil, err
-		}
-
-		track.URI = destURL.String()
-		result = append(result, track)
-	}
-
-	return &m3u.Playlist{
-		Tracks: result,
-	}, nil
 }

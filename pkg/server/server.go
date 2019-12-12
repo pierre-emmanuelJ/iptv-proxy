@@ -31,9 +31,13 @@ type Config struct {
 
 // NewServer initialize a new server configuration
 func NewServer(config *config.ProxyConfig) (*Config, error) {
-	p, err := m3u.Parse(config.RemoteURL.String())
-	if err != nil {
-		return nil, err
+	var p m3u.Playlist
+	if config.RemoteURL.String() != "" {
+		var err error
+		p, err = m3u.Parse(config.RemoteURL.String())
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &Config{
