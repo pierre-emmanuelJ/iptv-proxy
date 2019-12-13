@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -144,67 +143,16 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context, q url.Values) {
 		action = q["action"][0]
 	}
 
-	protocol := "http"
-	if c.HTTPS {
-		protocol = "https"
-	}
-
 	client, err := xtreamapi.New(c.XtreamUser, c.XtreamPassword, c.XtreamBaseURL)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, err)
 		return
 	}
 
-	//TODO Move this part in xtream-proxy package.
-	var respBody interface{}
-
-	switch action {
-	case xtreamapi.GetLiveCategories:
-		respBody, err = client.GetLiveCategories()
-	case xtreamapi.GetLiveStreams:
-		respBody, err = client.GetLiveStreams("")
-	case xtreamapi.GetVodCategories:
-		respBody, err = client.GetVideoOnDemandCategories()
-	case xtreamapi.GetVodStreams:
-		respBody, err = client.GetVideoOnDemandStreams("")
-	case xtreamapi.GetVodInfo:
-		if len(q["vod_id"]) < 1 {
-			ctx.AbortWithError(http.StatusBadRequest, fmt.Errorf(`bad body url query parameters: missing "vod_id"`))
-			return
-		}
-		respBody, err = client.GetVideoOnDemandInfo(q["vod_id"][0])
-	case xtreamapi.GetSeriesCategories:
-		respBody, err = client.GetSeriesCategories()
-	case xtreamapi.GetSeries:
-		respBody, err = client.GetSeries("")
-	case xtreamapi.GetSerieInfo:
-		if len(q["series_id"]) < 1 {
-			ctx.AbortWithError(http.StatusBadRequest, fmt.Errorf(`bad body url query parameters: missing "series_id"`))
-			return
-		}
-		respBody, err = client.GetSeriesInfo(q["series_id"][0])
-	case xtreamapi.GetShortEPG:
-		if len(q["stream_id"]) < 1 {
-			ctx.AbortWithError(http.StatusBadRequest, fmt.Errorf(`bad body url query parameters: missing "stream_id"`))
-			return
-		}
-		limit := 0
-		if len(q["limit"]) > 0 {
-			limit, err = strconv.Atoi(q["limit"][0])
-			if err != nil {
-				ctx.AbortWithError(http.StatusInternalServerError, err)
-				return
-			}
-		}
-		respBody, err = client.GetShortEPG(q["stream_id"][0], limit)
-	case xtreamapi.GetSimpleDataTable:
-		if len(q["stream_id"]) < 1 {
-			ctx.AbortWithError(http.StatusBadRequest, fmt.Errorf(`bad body url query parameters: missing "stream_id"`))
-			return
-		}
-		respBody, err = client.GetEPG(q["stream_id"][0])
-	default:
-		respBody, err = client.Login(c.User, c.Password, protocol+"://"+c.HostConfig.Hostname, int(c.HostConfig.Port), protocol)
+	resp, httpcode, err := client.Action(c.ProxyConfig, action, q)
+	if err != nil {
+		ctx.AbortWithError(httpcode, err)
+		return
 	}
 
 	log.Printf("[iptv-proxy] %v | %s |Action\t%s\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP(), action)
@@ -214,7 +162,7 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context, q url.Values) {
 		return
 	}
 
-	ctx.JSON(http.StatusOK, respBody)
+	ctx.JSON(http.StatusOK, resp)
 }
 
 func (c *Config) xtreamXMLTV(ctx *gin.Context) {

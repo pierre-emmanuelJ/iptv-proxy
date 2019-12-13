@@ -110,14 +110,14 @@ func copyHTTPHeader(ctx *gin.Context, header http.Header) {
 	}
 }
 
-// AuthRequest handle auth credentials
-type AuthRequest struct {
+// authRequest handle auth credentials
+type authRequest struct {
 	Username string `form:"username" binding:"required"`
 	Password string `form:"password" binding:"required"`
 }
 
 func (c *Config) authenticate(ctx *gin.Context) {
-	var authReq AuthRequest
+	var authReq authRequest
 	if err := ctx.Bind(&authReq); err != nil {
 		ctx.AbortWithError(http.StatusBadRequest, err)
 		return
