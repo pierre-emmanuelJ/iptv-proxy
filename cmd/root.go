@@ -7,10 +7,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/jamesnetherton/m3u"
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/config"
 
-	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/routes"
+	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/server"
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
@@ -25,15 +24,6 @@ var rootCmd = &cobra.Command{
 	Short: "Reverse proxy on iptv m3u file and xtream codes server api",
 	Run: func(cmd *cobra.Command, args []string) {
 		m3uURL := viper.GetString("m3u-url")
-		var err error
-		var playlist m3u.Playlist
-		if m3uURL != "" {
-			playlist, err = m3u.Parse(m3uURL)
-			if err != nil {
-				log.Fatal(err)
-			}
-		}
-
 		remoteHostURL, err := url.Parse(m3uURL)
 		if err != nil {
 			log.Fatal(err)
@@ -61,7 +51,6 @@ var rootCmd = &cobra.Command{
 		}
 
 		conf := &config.ProxyConfig{
-			Playlist: &playlist,
 			HostConfig: &config.HostConfiguration{
 				Hostname: viper.GetString("hostname"),
 				Port:     viper.GetInt64("port"),
@@ -78,7 +67,12 @@ var rootCmd = &cobra.Command{
 			CustomEndpoint:     viper.GetString("custom-endpoint"),
 		}
 
-		if e := routes.Serve(conf); e != nil {
+		server, err := server.NewServer(conf)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		if e := server.Serve(); e != nil {
 			log.Fatal(e)
 		}
 	},
@@ -111,7 +105,7 @@ func init() {
 	rootCmd.Flags().String("xtream-user", "", "Xtream-code user login")
 	rootCmd.Flags().String("xtream-password", "", "Xtream-code password login")
 	rootCmd.Flags().String("xtream-base-url", "", "Xtream-code base url e.g(http://expample.tv:8080)")
-	rootCmd.Flags().Int("m3u-cache-expiration", 24, "M3U cache expiration in hour")
+	rootCmd.Flags().Int("m3u-cache-expiration", 1, "M3U cache expiration in hour")
 
 	if e := viper.BindPFlags(rootCmd.Flags()); e != nil {
 		log.Fatal("error binding PFlags to viper")

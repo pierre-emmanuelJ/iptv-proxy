@@ -2,8 +2,6 @@ package config
 
 import (
 	"net/url"
-
-	"github.com/jamesnetherton/m3u"
 )
 
 // HostConfiguration containt host infos
@@ -14,7 +12,6 @@ type HostConfiguration struct {
 
 // ProxyConfig Contain original m3u playlist and HostConfiguration
 type ProxyConfig struct {
-	Playlist           *m3u.Playlist
 	HostConfig         *HostConfiguration
 	XtreamUser         string
 	XtreamPassword     string
@@ -24,6 +21,5 @@ type ProxyConfig struct {
 	CustomEndpoint     string
 	RemoteURL          *url.URL
 	HTTPS              bool
-	//XXX Very unsafe
-	User, Password string
+	User, Password     string
 }
