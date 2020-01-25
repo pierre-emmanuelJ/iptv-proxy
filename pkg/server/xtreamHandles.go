@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -17,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jamesnetherton/m3u"
 	xtreamapi "github.com/pierre-emmanuelJ/iptv-proxy/pkg/xtream-proxy"
+	uuid "github.com/satori/go.uuid"
 )
 
 type cacheMeta struct {
@@ -42,8 +42,7 @@ func (c *Config) cacheXtreamM3u(m3uURL *url.URL) error {
 	tmp := c.playlist
 	c.playlist = &playlist
 
-	filename := base64.StdEncoding.EncodeToString([]byte(m3uURL.String()))
-	path := filepath.Join("/tmp", filename)
+	path := filepath.Join("/tmp", uuid.NewV4().String()+".iptv-proxy")
 	f, err := os.Create(path)
 	if err != nil {
 		return err
