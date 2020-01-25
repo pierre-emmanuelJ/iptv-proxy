@@ -8,14 +8,13 @@ import (
 
 	"github.com/jamesnetherton/m3u"
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/config"
+	uuid "github.com/satori/go.uuid"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
-const (
-	defaultProxyfiedM3UPath = "/tmp/iptv-proxy.m3u"
-)
+var defaultProxyfiedM3UPath = "/tmp/" + uuid.NewV4().String() + ".iptv-proxy.m3u"
 
 // Config represent the server configuration
 type Config struct {
