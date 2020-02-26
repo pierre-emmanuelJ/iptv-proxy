@@ -34,13 +34,15 @@ var xtreamM3uCacheLock = sync.RWMutex{}
 
 func (c *Config) cacheXtreamM3u(m3uURL *url.URL) error {
 	xtreamM3uCacheLock.Lock()
+	defer xtreamM3uCacheLock.Unlock()
+
 	playlist, err := m3u.Parse(m3uURL.String())
 	if err != nil {
 		return err
 	}
 
-	tmp := c.playlist
-	c.playlist = &playlist
+	tmp := *c
+	tmp.playlist = &playlist
 
 	path := filepath.Join("/tmp", uuid.NewV4().String()+".iptv-proxy")
 	f, err := os.Create(path)
@@ -49,12 +51,10 @@ func (c *Config) cacheXtreamM3u(m3uURL *url.URL) error {
 	}
 	defer f.Close()
 
-	if err := c.marshallInto(f, true); err != nil {
+	if err := tmp.marshallInto(f, true); err != nil {
 		return err
 	}
 	xtreamM3uCache[m3uURL.String()] = cacheMeta{path, time.Now()}
-	c.playlist = tmp
-	xtreamM3uCacheLock.Unlock()
 
 	return nil
 }
@@ -172,6 +172,7 @@ func (c *Config) xtreamXMLTV(ctx *gin.Context) {
 	}
 
 	resp, err := client.GetXMLTV()
+	client.GetVideoOnDemandCategories()
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, err)
 		return
@@ -229,6 +230,7 @@ func (c *Config) hlsrStream(ctx *gin.Context) {
 	url, ok := hlsChannelsRedirectURL[ctx.Param("channel")+".m3u8"]
 	if !ok {
 		ctx.AbortWithError(http.StatusNotFound, errors.New("HSL redirect url not found"))
+		hlsChannelsRedirectURLLock.RUnlock()
 		return
 	}
 	hlsChannelsRedirectURLLock.RUnlock()
