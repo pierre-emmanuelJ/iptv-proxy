@@ -20,10 +20,11 @@ sign:
   args: ["-u", "pierre-emmanuel.jacquier@epitech.eu", "--detach-sign", "${artifact}"]
   artifacts: all
 
-archive:
-  format_overrides:
-    - goos: windows
-      format: zip
+archives:
+  -
+   format_overrides:
+     - goos: windows
+       format: zip
 
 release:
   github:
@@ -31,20 +32,22 @@ release:
     name: iptv-proxy
   draft: true
 
-nfpm:
-  vendor: Pierre-Emmanuel
-  homepage: https://github.com/pierre-emmanuelJ/iptv-proxy
-  maintainer: Pierre-Emmanuel <pierre-emmanuel.jacquier@epitech.eu>
-  description: Reverse proxy on iptv m3u file
-  license: Apache 2.0
-  formats:
-    - deb
-    - rpm
+nfpms:
+  -
+   vendor: Pierre-Emmanuel
+   homepage: https://github.com/pierre-emmanuelJ/iptv-proxy
+   maintainer: Pierre-Emmanuel <pierre-emmanuel.jacquier@epitech.eu>
+   description: Reverse proxy on iptv m3u file
+   license: Apache 2.0
+   formats:
+     - deb
+     - rpm
 
-brew:
-  github:
-    owner: pierre-emmanuel
-    name: homebrew-tap
-  folder: Formula
-  homepage: "https://github.com/pierre-emmanuelJ/iptv-proxy"
-  description: Reverse proxy on iptv m3u file
+brews:
+  -
+   github:
+     owner: pierre-emmanuel
+     name: homebrew-tap
+   folder: Formula
+   homepage: "https://github.com/pierre-emmanuelJ/iptv-proxy"
+   description: Reverse proxy on iptv m3u file
