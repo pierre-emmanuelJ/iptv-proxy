@@ -44,7 +44,7 @@ Start proxy server example
 ```Bash
 iptv-proxy --m3u-url http://example.com/get.php?username=user&password=pass&type=m3u_plus&output=m3u8 \
              --port 8080 \
-             --hostname poxyexample.com \
+             --hostname proxyexample.com \
              --user test \
              --password passwordtest
 ```
@@ -52,26 +52,26 @@ iptv-proxy --m3u-url http://example.com/get.php?username=user&password=pass&type
 
  That's give you an m3u file on a specific endpoint `iptv.m3u` in our example
  
- `http://poxyserver.com:8080/iptv.m3u?username=test&password=passwordtest`
+ `http://proxyserver.com:8080/iptv.m3u?username=test&password=passwordtest`
 
 All the new routes pointing on your proxy server
 ```m3u
 #EXTM3U
 #EXTINF:-1 tvg-ID="examplechanel1.com" tvg-name="chanel1" tvg-logo="http://ch.xyz/logo1.png" group-title="USA HD",CHANEL1-HD
-http://poxyserver.com:8080/12/test/1?username=test&password=passwordtest
+http://proxyserver.com:8080/12/test/1?username=test&password=passwordtest
 #EXTINF:-1 tvg-ID="examplechanel2.com" tvg-name="chanel2" tvg-logo="http://ch.xyz/logo2.png" group-title="USA HD",CHANEL2-HD
-http://poxyserver.com:8080/13/test/2?username=test&password=passwordtest
+http://proxyserver.com:8080/13/test/2?username=test&password=passwordtest
 #EXTINF:-1 tvg-ID="examplechanel3.com" tvg-name="chanel3" tvg-logo="http://ch.xyz/logo3.png" group-title="USA HD",CHANEL3-HD
-http://poxyserver.com:8080/14/test/3?username=test&password=passwordtest
+http://proxyserver.com:8080/14/test/3?username=test&password=passwordtest
 #EXTINF:-1 tvg-ID="examplechanel4.com" tvg-name="chanel4" tvg-logo="http://ch.xyz/logo4.png" group-title="USA HD",CHANEL4-HD
-http://poxyserver.com:8080/15/test/4?username=test&password=passwordtest
+http://proxyserver.com:8080/15/test/4?username=test&password=passwordtest
 ```
 ### Xtream code client API example
 
 ```Bash
 % iptv-proxy --m3u-url http://example.com:1234/get.php?username=user&password=pass&type=m3u_plus&output=m3u8 \
              --port 8080 \
-             --hostname poxyexample.com \
+             --hostname proxyexample.com \
              ## put xtream flags if you want to add xtream proxy
              --xtream-user xtream_user \
              --xtream-password xtream_password \
@@ -99,15 +99,15 @@ New xtream credentials
  ```
  user: test
  password: passwordtest
- base-url: http://poxyexample.com:8080
+ base-url: http://proxyexample.com:8080
  ```
  
- All xtream live, streams, vod, series... are poxyfied! 
+ All xtream live, streams, vod, series... are proxyfied! 
  
  
  You can get the m3u file with the original Xtream api request:
  ```
- http://poxyexample.com:8080/get.php?username=test&password=passwordtest&type=m3u_plus&output=ts
+ http://proxyexample.com:8080/get.php?username=test&password=passwordtest&type=m3u_plus&output=ts
  ```
 
 
@@ -195,7 +195,7 @@ services:
       XTREAM_USER: xtream_user
       XTREAM_PASSWORD: xtream_password
       XTREAM_BASE_URL: "http://example.tv:8080"
-      #will be used for m3u and xtream auth poxy
+      #will be used for m3u and xtream auth proxy
       USER: test
       PASSWORD: testpassword
 
