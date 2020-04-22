@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/jamesnetherton/m3u"
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/config"
@@ -132,6 +133,11 @@ func (c *Config) replaceURL(uri string, xtream bool) (string, error) {
 	customEnd := c.CustomEndpoint
 	if customEnd != "" {
 		customEnd = fmt.Sprintf("/%s", customEnd)
+	} else {
+		// use prefix path before user/pass
+		if strings.Index(oriURL.EscapedPath(), c.XtreamUser) > 1 {
+			customEnd = "/" + oriURL.EscapedPath()[1:strings.Index(oriURL.EscapedPath(), c.XtreamUser)-1]
+		}
 	}
 
 	path := oriURL.EscapedPath()
