@@ -22,6 +22,19 @@ import (
 	"net/url"
 )
 
+// CredentialString represents an iptv-proxy credential.
+type CredentialString string
+
+// PathEscape escapes the credential for an url path.
+func (c CredentialString) PathEscape() string {
+	return url.PathEscape(string(c))
+}
+
+// String returns the credential string.
+func (c CredentialString) String() string {
+	return string(c)
+}
+
 // HostConfiguration containt host infos
 type HostConfiguration struct {
 	Hostname string
@@ -31,13 +44,13 @@ type HostConfiguration struct {
 // ProxyConfig Contain original m3u playlist and HostConfiguration
 type ProxyConfig struct {
 	HostConfig         *HostConfiguration
-	XtreamUser         string
-	XtreamPassword     string
+	XtreamUser         CredentialString
+	XtreamPassword     CredentialString
 	XtreamBaseURL      string
 	M3UCacheExpiration int
 	M3UFileName        string
 	CustomEndpoint     string
 	RemoteURL          *url.URL
 	HTTPS              bool
-	User, Password     string
+	User, Password     CredentialString
 }

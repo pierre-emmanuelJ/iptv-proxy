@@ -111,7 +111,7 @@ func (c *Config) hlsStream(ctx *gin.Context, oriURL *url.URL) {
 				return
 			}
 			body := string(b)
-			body = strings.ReplaceAll(body, "/"+c.XtreamUser+"/"+c.XtreamPassword+"/", "/"+c.User+"/"+c.Password+"/")
+			body = strings.ReplaceAll(body, "/"+c.XtreamUser.String()+"/"+c.XtreamPassword.String()+"/", "/"+c.User.String()+"/"+c.Password.String()+"/")
 			ctx.Data(http.StatusOK, hlsResp.Header.Get("Content-Type"), []byte(body))
 			return
 		}
@@ -140,7 +140,7 @@ func (c *Config) authenticate(ctx *gin.Context) {
 		ctx.AbortWithError(http.StatusBadRequest, err)
 		return
 	}
-	if c.ProxyConfig.User != authReq.Username || c.ProxyConfig.Password != authReq.Password {
+	if c.ProxyConfig.User.String() != authReq.Username || c.ProxyConfig.Password.String() != authReq.Password {
 		ctx.AbortWithStatus(http.StatusUnauthorized)
 	}
 }
@@ -162,7 +162,7 @@ func (c *Config) appAuthenticate(ctx *gin.Context) {
 		return
 	}
 	log.Printf("[iptv-proxy] %v | %s |App Auth\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP())
-	if c.ProxyConfig.User != q["username"][0] || c.ProxyConfig.Password != q["password"][0] {
+	if c.ProxyConfig.User.String() != q["username"][0] || c.ProxyConfig.Password.String() != q["password"][0] {
 		ctx.AbortWithStatus(http.StatusUnauthorized)
 	}
 

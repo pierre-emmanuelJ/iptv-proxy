@@ -34,8 +34,8 @@ func (c *Config) routes(r *gin.RouterGroup) {
 	if c.ProxyConfig.XtreamBaseURL != "" {
 		c.xtreamRoutes(r)
 		if strings.Contains(c.XtreamBaseURL, c.RemoteURL.Host) &&
-			c.XtreamUser == c.RemoteURL.Query().Get("username") &&
-			c.XtreamPassword == c.RemoteURL.Query().Get("password") {
+			c.XtreamUser.String() == c.RemoteURL.Query().Get("username") &&
+			c.XtreamPassword.String() == c.RemoteURL.Query().Get("password") {
 
 			r.GET("/"+c.M3UFileName, c.authenticate, c.xtreamGetAuto)
 			// XXX Private need: for external Android app
