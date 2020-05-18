@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path/filepath"
+	"strings"
 
 	"github.com/jamesnetherton/m3u"
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/config"
@@ -136,17 +136,22 @@ func (c *Config) replaceURL(uri string, xtream bool) (string, error) {
 
 	path := oriURL.EscapedPath()
 	if xtream {
-		path = fmt.Sprintf("/%s", filepath.Base(path))
+		path = strings.ReplaceAll(path, c.XtreamUser.PathEscape(), c.User.PathEscape())
+		path = strings.ReplaceAll(path, c.XtreamPassword.PathEscape(), c.Password.PathEscape())
+	}
+
+	basicAuth := oriURL.User.String()
+	if basicAuth != "" {
+		basicAuth += "@"
 	}
 
 	newURI := fmt.Sprintf(
-		"%s://%s:%d%s/%s/%s%s",
+		"%s://%s%s:%d%s%s",
 		protocol,
+		basicAuth,
 		c.HostConfig.Hostname,
 		c.HostConfig.Port,
 		customEnd,
-		url.QueryEscape(c.User),
-		url.QueryEscape(c.Password),
 		path,
 	)
 
