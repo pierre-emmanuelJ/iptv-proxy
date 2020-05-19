@@ -15,11 +15,6 @@ builds:
     goarch:
       - amd64
 
-sign:
-  cmd: gpg
-  args: ["-u", "pierre-emmanuel.jacquier@epitech.eu", "--detach-sign", "${artifact}"]
-  artifacts: all
-
 archives:
   -
    format_overrides:
@@ -42,12 +37,3 @@ nfpms:
    formats:
      - deb
      - rpm
-
-brews:
-  -
-   github:
-     owner: pierre-emmanuel
-     name: homebrew-tap
-   folder: Formula
-   homepage: "https://github.com/pierre-emmanuelJ/iptv-proxy"
-   description: Reverse proxy on iptv m3u file

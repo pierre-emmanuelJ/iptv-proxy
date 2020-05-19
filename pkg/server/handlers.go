@@ -43,7 +43,7 @@ func (c *Config) getM3U(ctx *gin.Context) {
 func (c *Config) reverseProxy(ctx *gin.Context) {
 	rpURL, err := url.Parse(c.track.URI)
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err)
+		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 		return
 	}
 
@@ -59,7 +59,7 @@ func (c *Config) stream(ctx *gin.Context, oriURL *url.URL) {
 
 	resp, err := http.Get(oriURL.String())
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err)
+		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 		return
 	}
 	defer resp.Body.Close()
@@ -67,7 +67,7 @@ func (c *Config) stream(ctx *gin.Context, oriURL *url.URL) {
 	copyHTTPHeader(ctx, resp.Header)
 	ctx.Status(resp.StatusCode)
 	ctx.Stream(func(w io.Writer) bool {
-		io.Copy(w, resp.Body)
+		io.Copy(w, resp.Body) // nolint: errcheck
 		return false
 	})
 }
@@ -81,7 +81,7 @@ func (c *Config) hlsStream(ctx *gin.Context, oriURL *url.URL) {
 
 	resp, err := client.Get(oriURL.String())
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err)
+		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 		return
 	}
 	defer resp.Body.Close()
@@ -89,7 +89,7 @@ func (c *Config) hlsStream(ctx *gin.Context, oriURL *url.URL) {
 	if resp.StatusCode == http.StatusFound {
 		location, err := resp.Location()
 		if err != nil {
-			ctx.AbortWithError(http.StatusInternalServerError, err)
+			ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 			return
 		}
 		id := ctx.Param("id")
@@ -100,14 +100,14 @@ func (c *Config) hlsStream(ctx *gin.Context, oriURL *url.URL) {
 
 			hlsResp, err := http.Get(location.String())
 			if err != nil {
-				ctx.AbortWithError(http.StatusInternalServerError, err)
+				ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 				return
 			}
 			defer hlsResp.Body.Close()
 
 			b, err := ioutil.ReadAll(hlsResp.Body)
 			if err != nil {
-				ctx.AbortWithError(http.StatusInternalServerError, err)
+				ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 				return
 			}
 			body := string(b)
@@ -115,7 +115,7 @@ func (c *Config) hlsStream(ctx *gin.Context, oriURL *url.URL) {
 			ctx.Data(http.StatusOK, hlsResp.Header.Get("Content-Type"), []byte(body))
 			return
 		}
-		ctx.AbortWithError(http.StatusInternalServerError, errors.New("Unable to HLS stream"))
+		ctx.AbortWithError(http.StatusInternalServerError, errors.New("Unable to HLS stream")) // nolint: errcheck
 		return
 	}
 
@@ -137,7 +137,7 @@ type authRequest struct {
 func (c *Config) authenticate(ctx *gin.Context) {
 	var authReq authRequest
 	if err := ctx.Bind(&authReq); err != nil {
-		ctx.AbortWithError(http.StatusBadRequest, err)
+		ctx.AbortWithError(http.StatusBadRequest, err) // nolint: errcheck
 		return
 	}
 	if c.ProxyConfig.User.String() != authReq.Username || c.ProxyConfig.Password.String() != authReq.Password {
@@ -148,17 +148,17 @@ func (c *Config) authenticate(ctx *gin.Context) {
 func (c *Config) appAuthenticate(ctx *gin.Context) {
 	contents, err := ioutil.ReadAll(ctx.Request.Body)
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err)
+		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 		return
 	}
 
 	q, err := url.ParseQuery(string(contents))
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err)
+		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 		return
 	}
 	if len(q["username"]) == 0 || len(q["password"]) == 0 {
-		ctx.AbortWithError(http.StatusBadRequest, fmt.Errorf("bad body url query parameters"))
+		ctx.AbortWithError(http.StatusBadRequest, fmt.Errorf("bad body url query parameters")) // nolint: errcheck
 		return
 	}
 	log.Printf("[iptv-proxy] %v | %s |App Auth\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP())
