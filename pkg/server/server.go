@@ -67,7 +67,9 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 
 // Serve the iptv-proxy api
 func (c *Config) Serve() error {
-	c.playlistInitialization()
+	if err := c.playlistInitialization(); err != nil {
+		return err
+	}
 
 	router := gin.Default()
 	router.Use(cors.Default())
@@ -93,25 +95,25 @@ func (c *Config) playlistInitialization() error {
 
 // MarshallInto a *bufio.Writer a Playlist.
 func (c *Config) marshallInto(into *os.File, xtream bool) error {
-	into.WriteString("#EXTM3U\n")
+	into.WriteString("#EXTM3U\n") // nolint: errcheck
 	for _, track := range c.playlist.Tracks {
-		into.WriteString("#EXTINF:")
-		into.WriteString(fmt.Sprintf("%d ", track.Length))
+		into.WriteString("#EXTINF:")                       // nolint: errcheck
+		into.WriteString(fmt.Sprintf("%d ", track.Length)) // nolint: errcheck
 		for i := range track.Tags {
 			if i == len(track.Tags)-1 {
-				into.WriteString(fmt.Sprintf("%s=%q", track.Tags[i].Name, track.Tags[i].Value))
+				into.WriteString(fmt.Sprintf("%s=%q", track.Tags[i].Name, track.Tags[i].Value)) // nolint: errcheck
 				continue
 			}
-			into.WriteString(fmt.Sprintf("%s=%q ", track.Tags[i].Name, track.Tags[i].Value))
+			into.WriteString(fmt.Sprintf("%s=%q ", track.Tags[i].Name, track.Tags[i].Value)) // nolint: errcheck
 		}
-		into.WriteString(", ")
+		into.WriteString(", ") // nolint: errcheck
 
 		uri, err := c.replaceURL(track.URI, xtream)
 		if err != nil {
 			return err
 		}
 
-		into.WriteString(fmt.Sprintf("%s\n%s\n", track.Name, uri))
+		into.WriteString(fmt.Sprintf("%s\n%s\n", track.Name, uri)) // nolint: errcheck
 	}
 
 	return into.Sync()
