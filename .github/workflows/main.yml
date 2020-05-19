@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: Run golangci-lint
+      uses: actions-contrib/golangci-lint@v1
+    - name: Run tests and attempt building
+      run: |
+        export PATH=$(go env GOPATH)/bin:$PATH
+        go test -mod vendor -v -race ./...
+        go build -mod vendor
+---
+name: goreleaser
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v2
+      -
+        name: Unshallow
+        run: git fetch --prune --unshallow
+      -
+        name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.14
+      -
+        name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v2
+        with:
+          version: latest
+          args: release --rm-dist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
