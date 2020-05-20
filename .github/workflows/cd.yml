@@ -16,6 +16,9 @@ jobs:
         name: Unshallow
         run: git fetch --prune --unshallow
       -
+        name: Docker login
+        run: echo ${{ secrets.GH_TOKEN }} | docker login docker.pkg.github.com -u ${{ github.actor }} --password-stdin
+      -
         name: Set up Go
         uses: actions/setup-go@v2
         with:

@@ -25,11 +25,11 @@ release:
   github:
     owner: pierre-emmanuelJ
     name: iptv-proxy
-  draft: true
+  draft: false
 
 nfpms:
   -
-   vendor: Pierre-Emmanuel
+   vendor: Pierre-Emmanuel Jacquier
    homepage: https://github.com/pierre-emmanuelJ/iptv-proxy
    maintainer: Pierre-Emmanuel <pierre-emmanuel.jacquier@epitech.eu>
    description: Reverse proxy on iptv m3u file
@@ -37,3 +37,22 @@ nfpms:
    formats:
      - deb
      - rpm
+
+dockers:
+  -
+    goos: linux
+    goarch: amd64
+    binaries:
+    - iptv-proxy
+    image_templates:
+    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:{{ .Tag }}"
+
+    skip_push: false
+
+    build_flag_templates:
+    - "--label=org.opencontainers.image.created={{.Date}}"
+    - "--label=org.opencontainers.image.name={{.ProjectName}}"
+    - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+    - "--label=org.opencontainers.image.version={{.Version}}"
+
+    dockerfile: .Dockerfile.goreleaser

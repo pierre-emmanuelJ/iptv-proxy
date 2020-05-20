@@ -10,9 +10,17 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: Run golangci-lint
-      uses: actions-contrib/golangci-lint@v1
+      uses: golangci/golangci-lint-action@v1
+      with:
+        version: v1.27
     - name: Run tests and attempt building
       run: |
         export PATH=$(go env GOPATH)/bin:$PATH
         go test -mod vendor -v -race ./...
         go build -mod vendor
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build the Docker image
+      run: docker build . --file Dockerfile --tag iptv-proxy:ci-build
