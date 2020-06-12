@@ -1,4 +1,6 @@
-FROM golang:1.13.1-alpine
+FROM golang:1.14.4-alpine
+
+RUN apk add ca-certificates
 
 WORKDIR /go/src/github.com/pierre-emmanuelJ/iptv-proxy
 COPY . .

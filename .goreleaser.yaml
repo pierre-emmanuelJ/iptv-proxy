@@ -6,6 +6,7 @@ builds:
       - CGO_ENABLED=0
     flags:
       - -mod=vendor
+      - -a
     goos:
       - windows
       - darwin
@@ -46,6 +47,7 @@ dockers:
     - iptv-proxy
     image_templates:
     - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:{{ .Tag }}"
+    - "pierro777/iptv-proxy:{{ .Tag }}"
 
     skip_push: false
 
