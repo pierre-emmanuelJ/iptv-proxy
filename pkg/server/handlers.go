@@ -57,7 +57,17 @@ func (c *Config) stream(ctx *gin.Context, oriURL *url.URL) {
 		return
 	}
 
-	resp, err := http.Get(oriURL.String())
+	client := &http.Client{}
+
+	req, err := http.NewRequest("GET", oriURL.String(), nil)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		return
+	}
+
+	req.Header.Set("User-Agent", ctx.Request.UserAgent())
+
+	resp, err := client.Do(req)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 		return
@@ -79,7 +89,15 @@ func (c *Config) hlsStream(ctx *gin.Context, oriURL *url.URL) {
 		},
 	}
 
-	resp, err := client.Get(oriURL.String())
+	req, err := http.NewRequest("GET", oriURL.String(), nil)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		return
+	}
+
+	req.Header.Set("User-Agent", ctx.Request.UserAgent())
+
+	resp, err := client.Do(req)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 		return
@@ -98,7 +116,15 @@ func (c *Config) hlsStream(ctx *gin.Context, oriURL *url.URL) {
 			hlsChannelsRedirectURL[id] = *location
 			hlsChannelsRedirectURLLock.Unlock()
 
-			hlsResp, err := http.Get(location.String())
+			hlsReq, err := http.NewRequest("GET", location.String(), nil)
+			if err != nil {
+				ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+				return
+			}
+
+			hlsReq.Header.Set("User-Agent", ctx.Request.UserAgent())
+
+			hlsResp, err := client.Do(hlsReq)
 			if err != nil {
 				ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 				return

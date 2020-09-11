@@ -19,6 +19,7 @@
 package xtreamproxy
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -47,8 +48,8 @@ type Client struct {
 }
 
 // New new xtream client
-func New(user, password, baseURL string) (*Client, error) {
-	cli, err := xtream.NewClient(user, password, baseURL)
+func New(user, password, baseURL, userAgent string) (*Client, error) {
+	cli, err := xtream.NewClientWithUserAgent(context.Background(), user, password, baseURL, userAgent)
 	if err != nil {
 		return nil, err
 	}
