@@ -68,6 +68,11 @@ var rootCmd = &cobra.Command{
 			}
 		}
 
+		filters := map[string](bool){}
+		for _, groupName := range viper.GetStringSlice("filter-groups") {
+			filters[groupName] = true
+		}
+
 		conf := &config.ProxyConfig{
 			HostConfig: &config.HostConfiguration{
 				Hostname: viper.GetString("hostname"),
@@ -83,6 +88,7 @@ var rootCmd = &cobra.Command{
 			HTTPS:              viper.GetBool("https"),
 			M3UFileName:        viper.GetString("m3u-file-name"),
 			CustomEndpoint:     viper.GetString("custom-endpoint"),
+			FilterGroups:       filters,
 		}
 
 		server, err := server.NewServer(conf)

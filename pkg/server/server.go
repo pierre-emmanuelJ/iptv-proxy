@@ -96,9 +96,24 @@ func (c *Config) playlistInitialization() error {
 // MarshallInto a *bufio.Writer a Playlist.
 func (c *Config) marshallInto(into *os.File, xtream bool) error {
 	into.WriteString("#EXTM3U\n") // nolint: errcheck
+
+TRACKS_LOOP:
 	for _, track := range c.playlist.Tracks {
+
+		// Groups filtering
+		if len(c.FilterGroups) > 0 {
+			for i := range track.Tags {
+				name := track.Tags[i].Name
+				value := track.Tags[i].Value
+				if name == "group-title" && !c.FilterGroups[value] {
+					continue TRACKS_LOOP
+				}
+			}
+		}
+
 		into.WriteString("#EXTINF:")                       // nolint: errcheck
 		into.WriteString(fmt.Sprintf("%d ", track.Length)) // nolint: errcheck
+
 		for i := range track.Tags {
 			if i == len(track.Tags)-1 {
 				into.WriteString(fmt.Sprintf("%s=%q", track.Tags[i].Name, track.Tags[i].Value)) // nolint: errcheck
