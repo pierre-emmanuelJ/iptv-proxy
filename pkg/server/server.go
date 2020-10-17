@@ -1,3 +1,4 @@
+
 /*
  * Iptv-Proxy is a project to proxyfie an m3u file and to proxyfie an Xtream iptv service (client API).
  * Copyright (C) 2020  Pierre-Emmanuel Jacquier
@@ -23,6 +24,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"regexp"
 
 	"github.com/jamesnetherton/m3u"
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/config"
@@ -96,9 +98,34 @@ func (c *Config) playlistInitialization() error {
 // MarshallInto a *bufio.Writer a Playlist.
 func (c *Config) marshallInto(into *os.File, xtream bool) error {
 	into.WriteString("#EXTM3U\n") // nolint: errcheck
+
+	re_group := regexp.MustCompile(c.GroupRegex)
+	re_channel := regexp.MustCompile(c.ChannelRegex)
+
+TRACKS_LOOP:
 	for _, track := range c.playlist.Tracks {
+
+		// Group regex
+		if c.GroupRegex != "" {
+			for i := range track.Tags {
+				name := track.Tags[i].Name
+				value := track.Tags[i].Value
+				if name == "group-title" && !re_group.MatchString(value) {
+					continue TRACKS_LOOP
+				}
+			}
+		}
+
+		// Channel regex
+		if c.ChannelRegex != "" {
+			if !re_channel.MatchString(track.Name) {
+				continue TRACKS_LOOP
+			}
+		}
+
 		into.WriteString("#EXTINF:")                       // nolint: errcheck
 		into.WriteString(fmt.Sprintf("%d ", track.Length)) // nolint: errcheck
+
 		for i := range track.Tags {
 			if i == len(track.Tags)-1 {
 				into.WriteString(fmt.Sprintf("%s=%q", track.Tags[i].Name, track.Tags[i].Value)) // nolint: errcheck

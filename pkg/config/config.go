@@ -53,4 +53,6 @@ type ProxyConfig struct {
 	RemoteURL          *url.URL
 	HTTPS              bool
 	User, Password     CredentialString
+	GroupRegex         string
+	ChannelRegex       string
 }
