@@ -162,7 +162,10 @@ Or
       XTREAM_PASSWORD: xtream_password
       XTREAM_BASE_URL: "http://example.com:1234"
       USER: test
-      PASSWORD: testpassword
+      PASSWORD: testpassword 
+      # REGEX filters
+      GROUP_REGEX: 'SPORTS|NEWS'
+      CHANNEL_REGEX: 'HD'
 ```
 
 ### Start
