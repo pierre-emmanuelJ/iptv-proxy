@@ -30,4 +30,6 @@ services:
       #will be used for m3u and xtream auth poxy
       USER: test
       PASSWORD: testpassword
-
+      # REGEX filters
+      GROUP_REGEX: 'SPORTS|NEWS'
+      CHANNEL_REGEX: 'HD'
