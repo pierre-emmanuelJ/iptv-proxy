@@ -220,6 +220,19 @@ func (c *Config) xtreamStreamLive(ctx *gin.Context) {
 	c.stream(ctx, rpURL)
 }
 
+func (c *Config) xtreamStreamTimeshift(ctx *gin.Context) {
+	duration := ctx.Param("duration")
+	start := ctx.Param("start")
+	id := ctx.Param("id")
+	rpURL, err := url.Parse(fmt.Sprintf("%s/timeshift/%s/%s/%s/%s/%s", c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword, duration, start, id))
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		return
+	}
+
+	c.stream(ctx, rpURL)
+}
+
 func (c *Config) xtreamStreamMovie(ctx *gin.Context) {
 	id := ctx.Param("id")
 	rpURL, err := url.Parse(fmt.Sprintf("%s/movie/%s/%s/%s", c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword, id))
