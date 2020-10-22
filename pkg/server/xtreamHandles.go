@@ -27,6 +27,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -50,19 +52,54 @@ var hlsChannelsRedirectURLLock = sync.RWMutex{}
 var xtreamM3uCache map[string]cacheMeta = map[string]cacheMeta{}
 var xtreamM3uCacheLock = sync.RWMutex{}
 
-func (c *Config) cacheXtreamM3u(m3uURL *url.URL) error {
+func (c *Config) cacheXtreamM3u(ctx *gin.Context) error {
 	xtreamM3uCacheLock.Lock()
 	defer xtreamM3uCacheLock.Unlock()
+	tagsRegExp, _ := regexp.Compile("([a-zA-Z0-9-]+?)=\"([^\"]+)\"")
+	var playlist m3u.Playlist
 
-	playlist, err := m3u.Parse(m3uURL.String())
+	xstream, err := xtreamapi.New(c.XtreamUser.String(), c.XtreamPassword.String(), c.XtreamBaseURL, ctx.Request.UserAgent())
 	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 		return err
+	}
+
+	cat, err := xstream.GetLiveCategories()
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		return err
+	}
+
+	for _, category := range cat {
+		live, err := xstream.GetLiveStreams(fmt.Sprint(category.ID))
+		if err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+			return err
+		}
+		for _, stream := range live {
+			trackinfo := fmt.Sprintf("-1 tvg-id=\"%s\" tvg-name=\"%s\" tvg-logo=\"%s\" group-title=\"%s\", %s", stream.EPGChannelID, stream.Name, stream.Icon, category.Name, stream.Name)
+			length, parseErr := strconv.Atoi(strings.Split(trackinfo, " ")[0])
+			if parseErr != nil {
+				err = errors.New("Unable to parse length")
+				return err
+			}
+			track := &m3u.Track{strings.Trim(stream.Name, " "), length, "", nil}
+			tagList := tagsRegExp.FindAllString(trackinfo, -1)
+			for i := range tagList {
+				tagInfo := strings.Split(tagList[i], "=")
+				tag := m3u.Tag{tagInfo[0], strings.Replace(tagInfo[1], "\"", "", -1)}
+				track.Tags = append(track.Tags, tag)
+			}
+			playlist.Tracks = append(playlist.Tracks, *track)
+			playlist.Tracks[len(playlist.Tracks)-1].URI = fmt.Sprintf("%s/%s/%s/%s", c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword, fmt.Sprint(stream.ID))
+		}
+		time.Sleep(1 * time.Second)
 	}
 
 	tmp := *c
 	tmp.playlist = &playlist
 
-	path := filepath.Join("/tmp", uuid.NewV4().String()+".iptv-proxy")
+	path := filepath.Join(os.TempDir(), uuid.NewV4().String()+".iptv-proxy")
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -72,7 +109,7 @@ func (c *Config) cacheXtreamM3u(m3uURL *url.URL) error {
 	if err := tmp.marshallInto(f, true); err != nil {
 		return err
 	}
-	xtreamM3uCache[m3uURL.String()] = cacheMeta{path, time.Now()}
+	xtreamM3uCache[c.XtreamBaseURL] = cacheMeta{path, time.Now()}
 
 	return nil
 }
@@ -93,31 +130,13 @@ func (c *Config) xtreamGetAuto(ctx *gin.Context) {
 }
 
 func (c *Config) xtreamGet(ctx *gin.Context) {
-	rawURL := fmt.Sprintf("%s/get.php?username=%s&password=%s", c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword)
-
-	q := ctx.Request.URL.Query()
-
-	for k, v := range q {
-		if k == "username" || k == "password" {
-			continue
-		}
-
-		rawURL = fmt.Sprintf("%s&%s=%s", rawURL, k, strings.Join(v, ","))
-	}
-
-	m3uURL, err := url.Parse(rawURL)
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-		return
-	}
-
 	xtreamM3uCacheLock.RLock()
-	meta, ok := xtreamM3uCache[m3uURL.String()]
+	meta, ok := xtreamM3uCache[c.XtreamBaseURL]
 	d := time.Since(meta.Time)
 	if !ok || d.Hours() >= float64(c.M3UCacheExpiration) {
 		log.Printf("[iptv-proxy] %v | %s | xtream cache m3u file\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP())
 		xtreamM3uCacheLock.RUnlock()
-		if err := c.cacheXtreamM3u(m3uURL); err != nil {
+		if err := c.cacheXtreamM3u(ctx); err != nil {
 			ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 			return
 		}
@@ -127,7 +146,7 @@ func (c *Config) xtreamGet(ctx *gin.Context) {
 
 	ctx.Header("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, c.M3UFileName))
 	xtreamM3uCacheLock.RLock()
-	path := xtreamM3uCache[m3uURL.String()].string
+	path := xtreamM3uCache[c.XtreamBaseURL].string
 	xtreamM3uCacheLock.RUnlock()
 	ctx.Header("Content-Type", "application/octet-stream")
 
