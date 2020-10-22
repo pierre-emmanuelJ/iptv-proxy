@@ -83,11 +83,11 @@ func (c *Config) cacheXtreamM3u(ctx *gin.Context) error {
 				err = errors.New("Unable to parse length")
 				return err
 			}
-			track := &m3u.Track{strings.Trim(stream.Name, " "), length, "", nil}
+			track := &m3u.Track{Name: stream.Name, Length: length, URI: "", Tags: nil}
 			tagList := tagsRegExp.FindAllString(trackinfo, -1)
 			for i := range tagList {
 				tagInfo := strings.Split(tagList[i], "=")
-				tag := m3u.Tag{tagInfo[0], strings.Replace(tagInfo[1], "\"", "", -1)}
+				tag := m3u.Tag{Name: tagInfo[0], Value: strings.Replace(tagInfo[1], "\"", "", -1)}
 				track.Tags = append(track.Tags, tag)
 			}
 			playlist.Tracks = append(playlist.Tracks, *track)
