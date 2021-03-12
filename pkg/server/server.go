@@ -19,7 +19,9 @@
 package server
 
 import (
+	"bytes"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"strings"
@@ -97,23 +99,25 @@ func (c *Config) playlistInitialization() error {
 func (c *Config) marshallInto(into *os.File, xtream bool) error {
 	into.WriteString("#EXTM3U\n") // nolint: errcheck
 	for _, track := range c.playlist.Tracks {
-		into.WriteString("#EXTINF:")                       // nolint: errcheck
-		into.WriteString(fmt.Sprintf("%d ", track.Length)) // nolint: errcheck
+		var buffer bytes.Buffer
+
+		buffer.WriteString("#EXTINF:")                       // nolint: errcheck
+		buffer.WriteString(fmt.Sprintf("%d ", track.Length)) // nolint: errcheck
 		for i := range track.Tags {
 			if i == len(track.Tags)-1 {
-				into.WriteString(fmt.Sprintf("%s=%q", track.Tags[i].Name, track.Tags[i].Value)) // nolint: errcheck
+				buffer.WriteString(fmt.Sprintf("%s=%q", track.Tags[i].Name, track.Tags[i].Value)) // nolint: errcheck
 				continue
 			}
-			into.WriteString(fmt.Sprintf("%s=%q ", track.Tags[i].Name, track.Tags[i].Value)) // nolint: errcheck
+			buffer.WriteString(fmt.Sprintf("%s=%q ", track.Tags[i].Name, track.Tags[i].Value)) // nolint: errcheck
 		}
-		into.WriteString(", ") // nolint: errcheck
 
 		uri, err := c.replaceURL(track.URI, xtream)
 		if err != nil {
-			return err
+			log.Printf("ERROR: track: %s: %s", track.Name, err)
+			continue
 		}
 
-		into.WriteString(fmt.Sprintf("%s\n%s\n", track.Name, uri)) // nolint: errcheck
+		into.WriteString(fmt.Sprintf("%s, %s\n%s\n", buffer.String(), track.Name, uri)) // nolint: errcheck
 	}
 
 	return into.Sync()
