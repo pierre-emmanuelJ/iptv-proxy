@@ -7,11 +7,12 @@
 Iptv-Proxy is a project to proxyfie an m3u file
 and to proxyfie an Xtream iptv service (client API).
 
-### M3U
+### M3U and M3U8
 
 M3U service convert an iptv m3u file into a web proxy server.
 
 It's transform all the original tracks to an new url pointing on the proxy.
+
 
 ### Xtream code client api
 
@@ -66,6 +67,21 @@ http://proxyserver.com:8080/14/test/3?username=test&password=passwordtest
 #EXTINF:-1 tvg-ID="examplechanel4.com" tvg-name="chanel4" tvg-logo="http://ch.xyz/logo4.png" group-title="USA HD",CHANEL4-HD
 http://proxyserver.com:8080/15/test/4?username=test&password=passwordtest
 ```
+
+### M3u8 Example
+
+The m3u8 feature is like m3u.
+The playlist should be in the m3u format and should contain all m3u8 tracks.
+
+Sample of the original m3u file containing m3u8 track:
+```Shell
+#EXTM3U
+#EXTINF:-1 tvg-ID="examplechanel1.com" tvg-name="chanel1" tvg-logo="http://ch.xyz/logo1.png" group-title="USA HD",CHANEL1-HD
+http://iptvexample.net:1234/12/test/1.m3u8
+#EXTINF:-1 tvg-ID="examplechanel2.com" tvg-name="chanel2" tvg-logo="http://ch.xyz/logo2.png" group-title="USA HD",CHANEL2-HD
+http://iptvexample.net:1234/13/test/2.m3u8
+```
+
 ### Xtream code client API example
 
 ```Bash
