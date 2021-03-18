@@ -20,8 +20,7 @@ package server
 
 import (
 	"fmt"
-	"log"
-	"net/url"
+	"path"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -54,7 +53,7 @@ func (c *Config) xtreamRoutes(r *gin.RouterGroup) {
 	r.GET("/player_api.php", c.authenticate, c.xtreamPlayerAPIGET)
 	r.POST("/player_api.php", c.appAuthenticate, c.xtreamPlayerAPIPOST)
 	r.GET("/xmltv.php", c.authenticate, c.xtreamXMLTV)
-	r.GET(fmt.Sprintf("/%s/%s/:id", c.User, c.Password), c.xtreamStream)
+	r.GET(fmt.Sprintf("/%s/%s/:id", c.User, c.Password), c.xtreamStreamHandler)
 	r.GET(fmt.Sprintf("/live/%s/%s/:id", c.User, c.Password), c.xtreamStreamLive)
 	r.GET(fmt.Sprintf("/movie/%s/%s/:id", c.User, c.Password), c.xtreamStreamMovie)
 	r.GET(fmt.Sprintf("/series/%s/%s/:id", c.User, c.Password), c.xtreamStreamSeries)
@@ -66,25 +65,16 @@ func (c *Config) m3uRoutes(r *gin.RouterGroup) {
 	// XXX Private need: for external Android app
 	r.POST("/"+c.M3UFileName, c.authenticate, c.getM3U)
 
-	// List to verify duplicate entry endpoints
-	checkList := map[string]int8{}
 	for i, track := range c.playlist.Tracks {
-		oriURL, err := url.Parse(track.URI)
-		if err != nil {
-			return
-		}
 		trackConfig := &Config{
 			ProxyConfig: c.ProxyConfig,
 			track:       &c.playlist.Tracks[i],
 		}
-		_, ok := checkList[oriURL.Path]
-		if ok {
-			log.Printf("[iptv-proxy] WARNING endpoint %q already exist, skipping it", oriURL.Path)
-			continue
+
+		if strings.HasSuffix(track.URI, ".m3u8") {
+			r.GET(fmt.Sprintf("/%s/%s/%d/:id", c.User, c.Password, i), trackConfig.m3u8ReverseProxy)
+		} else {
+			r.GET(fmt.Sprintf("/%s/%s/%d/%s", c.User, c.Password, i, path.Base(track.URI)), trackConfig.reverseProxy)
 		}
-
-		r.GET(fmt.Sprintf("/%s/%s/%s", c.User, c.Password, oriURL.Path), trackConfig.reverseProxy)
-
-		checkList[oriURL.Path] = 0
 	}
 }

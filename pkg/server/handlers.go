@@ -20,13 +20,13 @@ package server
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 
@@ -50,13 +50,19 @@ func (c *Config) reverseProxy(ctx *gin.Context) {
 	c.stream(ctx, rpURL)
 }
 
-func (c *Config) stream(ctx *gin.Context, oriURL *url.URL) {
+func (c *Config) m3u8ReverseProxy(ctx *gin.Context) {
 	id := ctx.Param("id")
-	if strings.HasSuffix(id, ".m3u8") {
-		c.hlsStream(ctx, oriURL)
+
+	rpURL, err := url.Parse(strings.ReplaceAll(c.track.URI, path.Base(c.track.URI), id))
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 		return
 	}
 
+	c.stream(ctx, rpURL)
+}
+
+func (c *Config) stream(ctx *gin.Context, oriURL *url.URL) {
 	client := &http.Client{}
 
 	req, err := http.NewRequest("GET", oriURL.String(), nil)
@@ -82,70 +88,14 @@ func (c *Config) stream(ctx *gin.Context, oriURL *url.URL) {
 	})
 }
 
-func (c *Config) hlsStream(ctx *gin.Context, oriURL *url.URL) {
-	client := &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-
-	req, err := http.NewRequest("GET", oriURL.String(), nil)
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+func (c *Config) xtreamStream(ctx *gin.Context, oriURL *url.URL) {
+	id := ctx.Param("id")
+	if strings.HasSuffix(id, ".m3u8") {
+		c.hlsXtreamStream(ctx, oriURL)
 		return
 	}
 
-	req.Header.Set("User-Agent", ctx.Request.UserAgent())
-
-	resp, err := client.Do(req)
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusFound {
-		location, err := resp.Location()
-		if err != nil {
-			ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-			return
-		}
-		id := ctx.Param("id")
-		if strings.Contains(location.String(), id) {
-			hlsChannelsRedirectURLLock.Lock()
-			hlsChannelsRedirectURL[id] = *location
-			hlsChannelsRedirectURLLock.Unlock()
-
-			hlsReq, err := http.NewRequest("GET", location.String(), nil)
-			if err != nil {
-				ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-				return
-			}
-
-			hlsReq.Header.Set("User-Agent", ctx.Request.UserAgent())
-
-			hlsResp, err := client.Do(hlsReq)
-			if err != nil {
-				ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-				return
-			}
-			defer hlsResp.Body.Close()
-
-			b, err := ioutil.ReadAll(hlsResp.Body)
-			if err != nil {
-				ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-				return
-			}
-			body := string(b)
-			body = strings.ReplaceAll(body, "/"+c.XtreamUser.String()+"/"+c.XtreamPassword.String()+"/", "/"+c.User.String()+"/"+c.Password.String()+"/")
-			ctx.Data(http.StatusOK, hlsResp.Header.Get("Content-Type"), []byte(body))
-			return
-		}
-		ctx.AbortWithError(http.StatusInternalServerError, errors.New("Unable to HLS stream")) // nolint: errcheck
-		return
-	}
-
-	ctx.Status(resp.StatusCode)
+	c.stream(ctx, oriURL)
 }
 
 func copyHTTPHeader(ctx *gin.Context, header http.Header) {
