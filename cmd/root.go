@@ -71,7 +71,7 @@ var rootCmd = &cobra.Command{
 		conf := &config.ProxyConfig{
 			HostConfig: &config.HostConfiguration{
 				Hostname: viper.GetString("hostname"),
-				Port:     viper.GetInt64("port"),
+				Port:     viper.GetInt("port"),
 			},
 			RemoteURL:          remoteHostURL,
 			XtreamUser:         config.CredentialString(xtreamUser),
@@ -80,9 +80,14 @@ var rootCmd = &cobra.Command{
 			M3UCacheExpiration: viper.GetInt("m3u-cache-expiration"),
 			User:               config.CredentialString(viper.GetString("user")),
 			Password:           config.CredentialString(viper.GetString("password")),
+			AdvertisedPort:     viper.GetInt("advertised-port"),
 			HTTPS:              viper.GetBool("https"),
 			M3UFileName:        viper.GetString("m3u-file-name"),
 			CustomEndpoint:     viper.GetString("custom-endpoint"),
+		}
+
+		if conf.AdvertisedPort == 0 {
+			conf.AdvertisedPort = conf.HostConfig.Port
 		}
 
 		server, err := server.NewServer(conf)
@@ -111,15 +116,16 @@ func init() {
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "iptv-proxy-config", "C", "config file (default is $HOME/.iptv-proxy.yaml)")
-	rootCmd.Flags().StringP("m3u-url", "u", "", `iptv m3u file or url e.g: "http://example.com/iptv.m3u"`)
-	rootCmd.Flags().StringP("m3u-file-name", "", "iptv.m3u", `name of the new proxified m3u file e.g "http://poxy.com/iptv.m3u"`)
-	rootCmd.Flags().StringP("custom-endpoint", "", "", `custom endpoint "http://poxy.com/<custom-endpoint>/iptv.m3u"`)
-	rootCmd.Flags().Int64("port", 8080, "Port to expose the IPTVs endpoints")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "iptv-proxy-config", "C", "Config file (default is $HOME/.iptv-proxy.yaml)")
+	rootCmd.Flags().StringP("m3u-url", "u", "", `Iptv m3u file or url e.g: "http://example.com/iptv.m3u"`)
+	rootCmd.Flags().StringP("m3u-file-name", "", "iptv.m3u", `Name of the new proxified m3u file e.g "http://poxy.com/iptv.m3u"`)
+	rootCmd.Flags().StringP("custom-endpoint", "", "", `Custom endpoint "http://poxy.com/<custom-endpoint>/iptv.m3u"`)
+	rootCmd.Flags().Int("port", 8080, "Iptv-proxy listening port")
+	rootCmd.Flags().Int("advertised-port", 0, "Port to expose the IPTV file and xtream (by default, it's taking value from port) useful to put behind a reverse proxy")
 	rootCmd.Flags().String("hostname", "", "Hostname or IP to expose the IPTVs endpoints")
 	rootCmd.Flags().BoolP("https", "", false, "Activate https for urls proxy")
-	rootCmd.Flags().String("user", "usertest", "user UNSAFE(temp auth to access proxy)")
-	rootCmd.Flags().String("password", "passwordtest", "password UNSAFE(auth to access m3u proxy and xtream proxy)")
+	rootCmd.Flags().String("user", "usertest", "User auth to access proxy (m3u/xtream)")
+	rootCmd.Flags().String("password", "passwordtest", "Password auth to access proxy (m3u/xtream)")
 	rootCmd.Flags().String("xtream-user", "", "Xtream-code user login")
 	rootCmd.Flags().String("xtream-password", "", "Xtream-code password login")
 	rootCmd.Flags().String("xtream-base-url", "", "Xtream-code base url e.g(http://expample.tv:8080)")
