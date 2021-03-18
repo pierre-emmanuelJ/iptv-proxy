@@ -24,6 +24,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/jamesnetherton/m3u"
@@ -135,15 +136,17 @@ func (c *Config) replaceURL(uri string, xtream bool) (string, error) {
 		protocol = "https"
 	}
 
-	customEnd := c.CustomEndpoint
+	customEnd := strings.Trim(c.CustomEndpoint, "/")
 	if customEnd != "" {
 		customEnd = fmt.Sprintf("/%s", customEnd)
 	}
 
-	path := oriURL.EscapedPath()
+	uriPath := oriURL.EscapedPath()
 	if xtream {
-		path = strings.ReplaceAll(path, c.XtreamUser.PathEscape(), c.User.PathEscape())
-		path = strings.ReplaceAll(path, c.XtreamPassword.PathEscape(), c.Password.PathEscape())
+		uriPath = strings.ReplaceAll(uriPath, c.XtreamUser.PathEscape(), c.User.PathEscape())
+		uriPath = strings.ReplaceAll(uriPath, c.XtreamPassword.PathEscape(), c.Password.PathEscape())
+	} else {
+		uriPath = path.Join("/", c.User.PathEscape(), c.Password.PathEscape(), uriPath)
 	}
 
 	basicAuth := oriURL.User.String()
@@ -158,7 +161,7 @@ func (c *Config) replaceURL(uri string, xtream bool) (string, error) {
 		c.HostConfig.Hostname,
 		c.HostConfig.Port,
 		customEnd,
-		path,
+		uriPath,
 	)
 
 	newURL, err := url.Parse(newURI)
