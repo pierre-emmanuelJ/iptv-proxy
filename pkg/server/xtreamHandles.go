@@ -242,7 +242,7 @@ func (c *Config) xtreamStreamSeries(ctx *gin.Context) {
 	c.xtreamStream(ctx, rpURL)
 }
 
-func (c *Config) hlsrStream(ctx *gin.Context) {
+func (c *Config) xtreamHlsrStream(ctx *gin.Context) {
 	hlsChannelsRedirectURLLock.RLock()
 	url, ok := hlsChannelsRedirectURL[ctx.Param("channel")+".m3u8"]
 	if !ok {
@@ -338,4 +338,17 @@ func (c *Config) hlsXtreamStream(ctx *gin.Context, oriURL *url.URL) {
 	}
 
 	ctx.Status(resp.StatusCode)
+}
+
+func (c *Config) xtreamHlsStream(ctx *gin.Context) {
+	id := ctx.Param("id")
+	token := ctx.Param("token")
+
+	rpURL, err := url.Parse(fmt.Sprintf("%s/hls/%s/%s", c.XtreamBaseURL, token, id))
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		return
+	}
+
+	c.stream(ctx, rpURL)
 }
