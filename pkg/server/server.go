@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/jamesnetherton/m3u"
@@ -35,7 +36,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var defaultProxyfiedM3UPath = "/tmp/" + uuid.NewV4().String() + ".iptv-proxy.m3u"
+var defaultProxyfiedM3UPath = filepath.Join(os.TempDir(), uuid.NewV4().String()+".iptv-proxy.m3u")
 
 // Config represent the server configuration
 type Config struct {

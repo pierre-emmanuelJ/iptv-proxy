@@ -62,7 +62,7 @@ func (c *Config) cacheXtreamM3u(m3uURL *url.URL) error {
 	tmp := *c
 	tmp.playlist = &playlist
 
-	path := filepath.Join("/tmp", uuid.NewV4().String()+".iptv-proxy")
+	path := filepath.Join(os.TempDir(), uuid.NewV4().String()+".iptv-proxy.m3u")
 	f, err := os.Create(path)
 	if err != nil {
 		return err
