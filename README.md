@@ -191,8 +191,7 @@ services:
     container_name: "iptv-proxy"
     restart: on-failure
     expose:
-      # have to be the same as ENV variable PORT
-      - 443
+      - 8080
     labels:
       - "traefik.enable=true"
       - "traefik.frontend.rule=Host:iptv.proxyexample.xyz"
@@ -200,8 +199,10 @@ services:
       # if you are using m3u remote file
       # M3U_URL: https://example.com/iptvfile.m3u
       M3U_URL: /root/iptv/iptv.m3u
-      # Port to expose the IPTVs endpoints
-      PORT: 443
+      # Iptv-Proxy listening port
+      PORT: 8080
+      # Port to expose for Xtream or m3u file tracks endpoint
+      ADVERTISED_PORT: 443
       # Hostname or IP to expose the IPTVs endpoints (for machine not for docker)
       HOSTNAME: iptv.proxyexample.xyz
       GIN_MODE: release
@@ -210,7 +211,7 @@ services:
       ## Xtream-code proxy configuration
       XTREAM_USER: xtream_user
       XTREAM_PASSWORD: xtream_password
-      XTREAM_BASE_URL: "http://example.tv:8080"
+      XTREAM_BASE_URL: "http://example.tv:1234"
       #will be used for m3u and xtream auth proxy
       USER: test
       PASSWORD: testpassword
