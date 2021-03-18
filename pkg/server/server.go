@@ -166,7 +166,7 @@ func (c *Config) replaceURL(uri string, trackIndex int, xtream bool) (string, er
 		protocol,
 		basicAuth,
 		c.HostConfig.Hostname,
-		c.HostConfig.Port,
+		c.AdvertisedPort,
 		customEnd,
 		uriPath,
 	)

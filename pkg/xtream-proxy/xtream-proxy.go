@@ -150,7 +150,7 @@ func (c *Client) Action(config *config.ProxyConfig, action string, q url.Values)
 		}
 		respBody, err = c.GetEPG(q["stream_id"][0])
 	default:
-		respBody, err = c.login(config.User.String(), config.Password.String(), protocol+"://"+config.HostConfig.Hostname, int(config.HostConfig.Port), protocol)
+		respBody, err = c.login(config.User.String(), config.Password.String(), protocol+"://"+config.HostConfig.Hostname, config.AdvertisedPort, protocol)
 	}
 
 	return

@@ -38,7 +38,7 @@ func (c CredentialString) String() string {
 // HostConfiguration containt host infos
 type HostConfiguration struct {
 	Hostname string
-	Port     int64
+	Port     int
 }
 
 // ProxyConfig Contain original m3u playlist and HostConfiguration
@@ -51,6 +51,7 @@ type ProxyConfig struct {
 	M3UFileName        string
 	CustomEndpoint     string
 	RemoteURL          *url.URL
+	AdvertisedPort     int
 	HTTPS              bool
 	User, Password     CredentialString
 }
