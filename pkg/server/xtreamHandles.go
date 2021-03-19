@@ -287,7 +287,7 @@ func (c *Config) hlsXtreamStream(ctx *gin.Context, oriURL *url.URL) {
 		return
 	}
 
-	req.Header.Set("User-Agent", ctx.Request.UserAgent())
+	copyHttpHeader(req.Header, ctx.Request.Header)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -314,7 +314,7 @@ func (c *Config) hlsXtreamStream(ctx *gin.Context, oriURL *url.URL) {
 				return
 			}
 
-			hlsReq.Header.Set("User-Agent", ctx.Request.UserAgent())
+			copyHttpHeader(hlsReq.Header, ctx.Request.Header)
 
 			hlsResp, err := client.Do(hlsReq)
 			if err != nil {
@@ -330,6 +330,9 @@ func (c *Config) hlsXtreamStream(ctx *gin.Context, oriURL *url.URL) {
 			}
 			body := string(b)
 			body = strings.ReplaceAll(body, "/"+c.XtreamUser.String()+"/"+c.XtreamPassword.String()+"/", "/"+c.User.String()+"/"+c.Password.String()+"/")
+
+			copyHttpHeader(ctx.Request.Header, hlsResp.Header)
+
 			ctx.Data(http.StatusOK, hlsResp.Header.Get("Content-Type"), []byte(body))
 			return
 		}
@@ -338,17 +341,4 @@ func (c *Config) hlsXtreamStream(ctx *gin.Context, oriURL *url.URL) {
 	}
 
 	ctx.Status(resp.StatusCode)
-}
-
-func (c *Config) xtreamHlsStream(ctx *gin.Context) {
-	id := ctx.Param("id")
-	token := ctx.Param("token")
-
-	rpURL, err := url.Parse(fmt.Sprintf("%s/hls/%s/%s", c.XtreamBaseURL, token, id))
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-		return
-	}
-
-	c.stream(ctx, rpURL)
 }
