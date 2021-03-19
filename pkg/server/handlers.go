@@ -71,7 +71,7 @@ func (c *Config) stream(ctx *gin.Context, oriURL *url.URL) {
 		return
 	}
 
-	req.Header.Set("User-Agent", ctx.Request.UserAgent())
+	copyHttpHeader(req.Header, ctx.Request.Header)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -80,7 +80,7 @@ func (c *Config) stream(ctx *gin.Context, oriURL *url.URL) {
 	}
 	defer resp.Body.Close()
 
-	copyHTTPHeader(ctx, resp.Header)
+	copyHttpHeader(ctx.Writer.Header(), resp.Header)
 	ctx.Status(resp.StatusCode)
 	ctx.Stream(func(w io.Writer) bool {
 		io.Copy(w, resp.Body) // nolint: errcheck
@@ -98,9 +98,11 @@ func (c *Config) xtreamStream(ctx *gin.Context, oriURL *url.URL) {
 	c.stream(ctx, oriURL)
 }
 
-func copyHTTPHeader(ctx *gin.Context, header http.Header) {
-	for k, v := range header {
-		ctx.Header(k, strings.Join(v, ", "))
+func copyHttpHeader(dst, src http.Header) {
+	for k, vv := range src {
+		for _, v := range vv {
+			dst.Add(k, v)
+		}
 	}
 }
 

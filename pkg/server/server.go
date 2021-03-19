@@ -37,6 +37,7 @@ import (
 )
 
 var defaultProxyfiedM3UPath = filepath.Join(os.TempDir(), uuid.NewV4().String()+".iptv-proxy.m3u")
+var endpointAntiColision = strings.Split(uuid.NewV4().String(), "-")[0]
 
 // Config represent the server configuration
 type Config struct {
@@ -48,6 +49,8 @@ type Config struct {
 	track *m3u.Track
 	// path to the proxyfied m3u file
 	proxyfiedM3UPath string
+
+	endpointAntiColision string
 }
 
 // NewServer initialize a new server configuration
@@ -66,6 +69,7 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 		&p,
 		nil,
 		defaultProxyfiedM3UPath,
+		endpointAntiColision,
 	}, nil
 }
 
@@ -154,7 +158,7 @@ func (c *Config) replaceURL(uri string, trackIndex int, xtream bool) (string, er
 		uriPath = strings.ReplaceAll(uriPath, c.XtreamUser.PathEscape(), c.User.PathEscape())
 		uriPath = strings.ReplaceAll(uriPath, c.XtreamPassword.PathEscape(), c.Password.PathEscape())
 	} else {
-		uriPath = path.Join("/", c.User.PathEscape(), c.Password.PathEscape(), fmt.Sprintf("%d", trackIndex), path.Base(uriPath))
+		uriPath = path.Join("/", c.endpointAntiColision, c.User.PathEscape(), c.Password.PathEscape(), fmt.Sprintf("%d", trackIndex), path.Base(uriPath))
 	}
 
 	basicAuth := oriURL.User.String()
