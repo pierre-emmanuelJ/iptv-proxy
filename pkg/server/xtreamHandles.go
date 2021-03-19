@@ -242,15 +242,50 @@ func (c *Config) xtreamStreamSeries(ctx *gin.Context) {
 	c.xtreamStream(ctx, rpURL)
 }
 
-func (c *Config) xtreamHlsrStream(ctx *gin.Context) {
-	hlsChannelsRedirectURLLock.RLock()
-	url, ok := hlsChannelsRedirectURL[ctx.Param("channel")+".m3u8"]
-	if !ok {
-		ctx.AbortWithError(http.StatusNotFound, errors.New("HSL redirect url not found")) // nolint: errcheck
-		hlsChannelsRedirectURLLock.RUnlock()
+func (c *Config) xtreamHlsStream(ctx *gin.Context) {
+	chunk := ctx.Param("chunk")
+	s := strings.Split(chunk, "_")
+	if len(s) != 2 {
+		ctx.AbortWithError( // nolint: errcheck
+			http.StatusInternalServerError,
+			errors.New("HSL malformed chunk"),
+		)
 		return
 	}
-	hlsChannelsRedirectURLLock.RUnlock()
+	channel := s[0]
+
+	url, err := getHlsRedirectURL(channel)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		return
+	}
+
+	req, err := url.Parse(
+		fmt.Sprintf(
+			"%s://%s/hls/%s/%s",
+			url.Scheme,
+			url.Host,
+			ctx.Param("token"),
+			ctx.Param("chunk"),
+		),
+	)
+
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		return
+	}
+
+	c.xtreamStream(ctx, req)
+}
+
+func (c *Config) xtreamHlsrStream(ctx *gin.Context) {
+	channel := ctx.Param("channel")
+
+	url, err := getHlsRedirectURL(channel)
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		return
+	}
 
 	req, err := url.Parse(
 		fmt.Sprintf(
@@ -272,6 +307,18 @@ func (c *Config) xtreamHlsrStream(ctx *gin.Context) {
 	}
 
 	c.xtreamStream(ctx, req)
+}
+
+func getHlsRedirectURL(channel string) (*url.URL, error) {
+	hlsChannelsRedirectURLLock.RLock()
+	defer hlsChannelsRedirectURLLock.RUnlock()
+
+	url, ok := hlsChannelsRedirectURL[channel+".m3u8"]
+	if !ok {
+		return nil, errors.New("HSL redirect url not found")
+	}
+
+	return &url, nil
 }
 
 func (c *Config) hlsXtreamStream(ctx *gin.Context, oriURL *url.URL) {
