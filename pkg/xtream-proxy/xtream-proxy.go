@@ -104,36 +104,46 @@ func (c *Client) Action(config *config.ProxyConfig, action string, q url.Values)
 	case getLiveCategories:
 		respBody, err = c.GetLiveCategories()
 	case getLiveStreams:
-		respBody, err = c.GetLiveStreams("")
+		categoryID := ""
+		if len(q["category_id"]) > 0 {
+			categoryID = q["category_id"][0]
+		}
+		respBody, err = c.GetLiveStreams(categoryID)
 	case getVodCategories:
 		respBody, err = c.GetVideoOnDemandCategories()
 	case getVodStreams:
-		respBody, err = c.GetVideoOnDemandStreams("")
+		categoryID := ""
+		if len(q["category_id"]) > 0 {
+			categoryID = q["category_id"][0]
+		}
+		respBody, err = c.GetVideoOnDemandStreams(categoryID)
 	case getVodInfo:
-		if len(q["vod_id"]) < 1 {
-			err = fmt.Errorf(`bad body url query parameters: missing "vod_id"`)
-			httpcode = http.StatusBadRequest
+		httpcode, err = validateParams(q, "vod_id")
+		if err != nil {
 			return
 		}
 		respBody, err = c.GetVideoOnDemandInfo(q["vod_id"][0])
 	case getSeriesCategories:
 		respBody, err = c.GetSeriesCategories()
 	case getSeries:
-		respBody, err = c.GetSeries("")
+		categoryID := ""
+		if len(q["category_id"]) > 0 {
+			categoryID = q["category_id"][0]
+		}
+		respBody, err = c.GetSeries(categoryID)
 	case getSerieInfo:
-		if len(q["series_id"]) < 1 {
-			err = fmt.Errorf(`bad body url query parameters: missing "series_id"`)
-			httpcode = http.StatusBadRequest
+		httpcode, err = validateParams(q, "series_id")
+		if err != nil {
 			return
 		}
 		respBody, err = c.GetSeriesInfo(q["series_id"][0])
 	case getShortEPG:
-		if len(q["stream_id"]) < 1 {
-			err = fmt.Errorf(`bad body url query parameters: missing "stream_id"`)
-			httpcode = http.StatusBadRequest
+		limit := 0
+
+		httpcode, err = validateParams(q, "stream_id")
+		if err != nil {
 			return
 		}
-		limit := 0
 		if len(q["limit"]) > 0 {
 			limit, err = strconv.Atoi(q["limit"][0])
 			if err != nil {
@@ -143,9 +153,8 @@ func (c *Client) Action(config *config.ProxyConfig, action string, q url.Values)
 		}
 		respBody, err = c.GetShortEPG(q["stream_id"][0], limit)
 	case getSimpleDataTable:
-		if len(q["stream_id"]) < 1 {
-			err = fmt.Errorf(`bad body url query parameters: missing "stream_id"`)
-			httpcode = http.StatusBadRequest
+		httpcode, err = validateParams(q, "stream_id")
+		if err != nil {
 			return
 		}
 		respBody, err = c.GetEPG(q["stream_id"][0])
@@ -154,4 +163,15 @@ func (c *Client) Action(config *config.ProxyConfig, action string, q url.Values)
 	}
 
 	return
+}
+
+func validateParams(u url.Values, params ...string) (int, error) {
+	for _, p := range params {
+		if len(u[p]) < 1 {
+			return http.StatusBadRequest, fmt.Errorf("missing %q", p)
+		}
+
+	}
+
+	return 0, nil
 }

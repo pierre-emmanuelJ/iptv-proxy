@@ -334,7 +334,7 @@ func (c *Config) hlsXtreamStream(ctx *gin.Context, oriURL *url.URL) {
 		return
 	}
 
-	copyHttpHeader(req.Header, ctx.Request.Header)
+	mergeHttpHeader(req.Header, ctx.Request.Header)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -361,7 +361,7 @@ func (c *Config) hlsXtreamStream(ctx *gin.Context, oriURL *url.URL) {
 				return
 			}
 
-			copyHttpHeader(hlsReq.Header, ctx.Request.Header)
+			mergeHttpHeader(hlsReq.Header, ctx.Request.Header)
 
 			hlsResp, err := client.Do(hlsReq)
 			if err != nil {
@@ -378,7 +378,7 @@ func (c *Config) hlsXtreamStream(ctx *gin.Context, oriURL *url.URL) {
 			body := string(b)
 			body = strings.ReplaceAll(body, "/"+c.XtreamUser.String()+"/"+c.XtreamPassword.String()+"/", "/"+c.User.String()+"/"+c.Password.String()+"/")
 
-			copyHttpHeader(ctx.Request.Header, hlsResp.Header)
+			mergeHttpHeader(ctx.Writer.Header(), hlsResp.Header)
 
 			ctx.Data(http.StatusOK, hlsResp.Header.Get("Content-Type"), []byte(body))
 			return
