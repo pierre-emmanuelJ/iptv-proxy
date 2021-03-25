@@ -14,4 +14,4 @@ require (
 	github.com/tellytv/go.xtream-codes v0.0.0-20190427212115-45e8162ba888
 )
 
-go 1.13
+go 1.16
