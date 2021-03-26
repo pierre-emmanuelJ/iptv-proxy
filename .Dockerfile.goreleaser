@@ -1,4 +1,4 @@
-FROM alpine:3.12.0
+FROM alpine:3
 RUN apk add ca-certificates
 COPY iptv-proxy /
 ENTRYPOINT ["/iptv-proxy"]
