@@ -173,7 +173,16 @@ Or
 
 ## TLS - https with traefik
 
-Put files of `./traekik` folder in root repo
+Put files and folders of `./traekik` folder in root repo:
+```Shell
+$ cp -r ./traekik/* .
+```
+
+```Shell
+$ mkdir config \
+        && mkdir -p Traefik/etc/traefik \
+        && mkdir -p Traefik/log
+```
 
 
 `docker-compose` sample with traefik:
@@ -190,11 +199,12 @@ services:
       - ./iptv:/root/iptv
     container_name: "iptv-proxy"
     restart: on-failure
-    expose:
-      - 8080
     labels:
       - "traefik.enable=true"
-      - "traefik.frontend.rule=Host:iptv.proxyexample.xyz"
+      - "traefik.http.routers.iptv-proxy.rule=Host(`iptv.proxyexample.xyz`)"
+      - "traefik.http.routers.iptv-proxy.entrypoints=websecure"
+      - "traefik.http.routers.iptv-proxy.tls.certresolver=mydnschallenge"
+      - "traefik.http.services.iptv-proxy.loadbalancer.server.port=8080"
     environment:
       # if you are using m3u remote file
       # M3U_URL: https://example.com/iptvfile.m3u
@@ -217,26 +227,20 @@ services:
       PASSWORD: testpassword
 
   traefik:
-    restart: unless-stopped
-    image: traefik:v1.7.16
+    restart: always
+    image: traefik:v2.4
     read_only: true
-    command:  --web
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./acme.json:/acme.json
-      - ./traefik.toml:/traefik.toml
-
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./Traefik/traefik.yaml:/traefik.yaml:ro
+      - ./Traefik/etc/traefik:/etc/traefik/
+      - ./Traefik/log:/var/log/traefik/
 ```
 
-Replace `iptv.proxyexample.xyz` in `docker-compose.yml` and `traefik.toml` with your desired domain.
-
-```Shell
-$ touch acme.json && chmod 600 acme.json
-```
-
+Replace `iptv.proxyexample.xyz` in `docker-compose.yml` with your desired domain.
 
 ```Shell
 $ docker-compose up -d

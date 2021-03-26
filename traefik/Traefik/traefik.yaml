@@ -1,0 +1,44 @@
+global:
+  checkNewVersion: false
+
+file:
+  watch: true
+
+api:
+  dashboard: true
+
+log:
+  filePath: "/var/log/traefik/traefik.log"
+  level: "INFO"
+
+accessLog:
+  filePath: "/var/log/traefik/access.log"
+
+entryPoints:
+  web:
+    address: :80
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+
+  websecure:
+    address: ':443'
+
+certificatesResolvers:
+  mydnschallenge:
+    acme:
+      email: ACME@EMAIL.COM
+      storage: /etc/traefik/acme.json
+      tlsChallenge: {}
+      httpChallenge:
+        entryPoint: web
+
+providers:
+  docker:
+    endpoint: 'unix:///var/run/docker.sock'
+    exposedbydefault: false
+  file:
+    filename: "/etc/traefik/routes.yaml"
+    watch: true
