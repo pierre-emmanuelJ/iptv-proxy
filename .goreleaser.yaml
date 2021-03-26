@@ -41,15 +41,21 @@ nfpms:
 
 dockers:
   - image_templates:
-    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:{{ .Tag }}-amd64"
-    - "pierro777/iptv-proxy:{{ .Tag }}-amd64"
+    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:{{ .Tag }}-arm64"
+    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:v{{ .Major }}-arm64"
+    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:v{{ .Major }}.{{ .Minor }}-arm64"
+    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:latest-arm64"
+    - "pierro777/iptv-proxy:{{ .Tag }}-arm64"
+    - "pierro777/iptv-proxy:v{{ .Major }}-arm64"
+    - "pierro777/iptv-proxy:v{{ .Major }}.{{ .Minor }}-arm64"
+    - "pierro777/iptv-proxy:latest-arm64"
     use_buildx: true
     goos: linux
-    goarch: amd64
+    goarch: arm64
     ids:
     - iptv-proxy
     build_flag_templates:
-    - "--platform=linux/amd64"
+    - "--platform=linux/arm64/v8"
     - "--label=org.opencontainers.image.created={{.Date}}"
     - "--label=org.opencontainers.image.name={{.ProjectName}}"
     - "--label=org.opencontainers.image.revision={{.FullCommit}}"
@@ -58,15 +64,29 @@ dockers:
     dockerfile: .Dockerfile.goreleaser
 
   - image_templates:
-    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:{{ .Tag }}-arm64"
-    - "pierro777/iptv-proxy:{{ .Tag }}-arm64"
+    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:{{ .Tag }}-amd64"
+    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:v{{ .Major }}-amd64"
+    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:v{{ .Major }}.{{ .Minor }}-amd64"
+    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:latest-amd64"
+    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:{{ .Tag }}"
+    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:v{{ .Major }}"
+    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:v{{ .Major }}.{{ .Minor }}"
+    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:latest"
+    - "pierro777/iptv-proxy:{{ .Tag }}-amd64"
+    - "pierro777/iptv-proxy:v{{ .Major }}-amd64"
+    - "pierro777/iptv-proxy:v{{ .Major }}.{{ .Minor }}-amd64"
+    - "pierro777/iptv-proxy:latest-amd64"
+    - "pierro777/iptv-proxy:{{ .Tag }}"
+    - "pierro777/iptv-proxy:v{{ .Major }}"
+    - "pierro777/iptv-proxy:v{{ .Major }}.{{ .Minor }}"
+    - "pierro777/iptv-proxy:latest"
     use_buildx: true
     goos: linux
-    goarch: arm64
+    goarch: amd64
     ids:
     - iptv-proxy
     build_flag_templates:
-    - "--platform=linux/arm64/v8"
+    - "--platform=linux/amd64"
     - "--label=org.opencontainers.image.created={{.Date}}"
     - "--label=org.opencontainers.image.name={{.ProjectName}}"
     - "--label=org.opencontainers.image.revision={{.FullCommit}}"
