@@ -115,7 +115,7 @@ func (c *Config) marshallInto(into *os.File, xtream bool) error {
 	re_channel := regexp.MustCompile(c.ChannelRegex)
 
 TRACKS_LOOP:
-	for _, track := range c.playlist.Tracks {
+	for j, track := range c.playlist.Tracks {
 
 		// Group regex
 		if c.GroupRegex != "" {
@@ -146,7 +146,7 @@ TRACKS_LOOP:
 			buffer.WriteString(fmt.Sprintf("%s=%q ", track.Tags[i].Name, track.Tags[i].Value)) // nolint: errcheck
 		}
 
-		uri, err := c.replaceURL(track.URI, i-ret, xtream)
+		uri, err := c.replaceURL(track.URI, j-ret, xtream)
 		if err != nil {
 			ret++
 			log.Printf("ERROR: track: %s: %s", track.Name, err)
