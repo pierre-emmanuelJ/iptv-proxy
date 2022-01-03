@@ -97,16 +97,16 @@ func (c *Config) xtreamGenerateM3u(ctx *gin.Context) (*m3u.Playlist, error) {
 
 			//TODO: Add more tag if needed.
 			if stream.EPGChannelID != "" {
-				track.Tags = append(track.Tags, m3u.Tag{"tvg-id", stream.EPGChannelID})
+				track.Tags = append(track.Tags, m3u.Tag{Name: "tvg-id", Value: stream.EPGChannelID})
 			}
 			if stream.Name != "" {
-				track.Tags = append(track.Tags, m3u.Tag{"tvg-name", stream.Name})
+				track.Tags = append(track.Tags, m3u.Tag{Name: "tvg-name", Value: stream.Name})
 			}
 			if stream.Icon != "" {
-				track.Tags = append(track.Tags, m3u.Tag{"tvg-logo", stream.Icon})
+				track.Tags = append(track.Tags, m3u.Tag{Name: "tvg-logo", Value: stream.Icon})
 			}
 			if category.Name != "" {
-				track.Tags = append(track.Tags, m3u.Tag{"group-title", category.Name})
+				track.Tags = append(track.Tags, m3u.Tag{Name: "group-title", Value: category.Name})
 			}
 
 			track.URI = fmt.Sprintf("%s/%s/%s/%s", c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword, fmt.Sprint(stream.ID))
@@ -180,8 +180,12 @@ func (c *Config) xtreamGet(ctx *gin.Context) {
 }
 
 func (c *Config) xtreamApiGet(ctx *gin.Context) {
+	const (
+		apiGet = "apiget"
+	)
+
 	xtreamM3uCacheLock.RLock()
-	meta, ok := xtreamM3uCache["apiget"]
+	meta, ok := xtreamM3uCache[apiGet]
 	d := time.Since(meta.Time)
 	if !ok || d.Hours() >= float64(c.M3UCacheExpiration) {
 		log.Printf("[iptv-proxy] %v | %s | xtream cache API m3u file\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP())
@@ -191,7 +195,7 @@ func (c *Config) xtreamApiGet(ctx *gin.Context) {
 			ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 			return
 		}
-		if err := c.cacheXtreamM3u(playlist, "apiget"); err != nil {
+		if err := c.cacheXtreamM3u(playlist, apiGet); err != nil {
 			ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 			return
 		}
@@ -201,7 +205,7 @@ func (c *Config) xtreamApiGet(ctx *gin.Context) {
 
 	ctx.Header("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, c.M3UFileName))
 	xtreamM3uCacheLock.RLock()
-	path := xtreamM3uCache["apiget"].string
+	path := xtreamM3uCache[apiGet].string
 	xtreamM3uCacheLock.RUnlock()
 	ctx.Header("Content-Type", "application/octet-stream")
 
