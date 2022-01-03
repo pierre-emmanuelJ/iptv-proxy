@@ -83,6 +83,8 @@ func (c *Config) xtreamGenerateM3u(ctx *gin.Context) (*m3u.Playlist, error) {
 		return nil, err
 	}
 
+	extension := ctx.Query("output")
+
 	var playlist = new(m3u.Playlist)
 	playlist.Tracks = make([]m3u.Track, 0)
 
@@ -109,7 +111,7 @@ func (c *Config) xtreamGenerateM3u(ctx *gin.Context) (*m3u.Playlist, error) {
 				track.Tags = append(track.Tags, m3u.Tag{Name: "group-title", Value: category.Name})
 			}
 
-			track.URI = fmt.Sprintf("%s/%s/%s/%s", c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword, fmt.Sprint(stream.ID))
+			track.URI = fmt.Sprintf("%s/%s/%s/%s.%s", c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword, fmt.Sprint(stream.ID), extension)
 			playlist.Tracks = append(playlist.Tracks, track)
 		}
 	}
