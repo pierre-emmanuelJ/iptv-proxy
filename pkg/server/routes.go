@@ -48,8 +48,13 @@ func (c *Config) routes(r *gin.RouterGroup) {
 }
 
 func (c *Config) xtreamRoutes(r *gin.RouterGroup) {
-	r.GET("/get.php", c.authenticate, c.xtreamGet)
-	r.POST("/get.php", c.authenticate, c.xtreamGet)
+	getphp := gin.HandlerFunc(c.xtreamGet)
+	if c.XtreamGenerateApiGet {
+		getphp = c.xtreamApiGet
+	}
+	r.GET("/get.php", c.authenticate, getphp)
+	r.POST("/get.php", c.authenticate, getphp)
+	r.GET("/apiget", c.authenticate, c.xtreamApiGet)
 	r.GET("/player_api.php", c.authenticate, c.xtreamPlayerAPIGET)
 	r.POST("/player_api.php", c.appAuthenticate, c.xtreamPlayerAPIPOST)
 	r.GET("/xmltv.php", c.authenticate, c.xtreamXMLTV)
