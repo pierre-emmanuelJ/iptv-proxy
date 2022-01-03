@@ -72,7 +72,7 @@ func (c *Config) cacheXtreamM3u(playlist *m3u.Playlist, cacheName string) error 
 	return nil
 }
 
-func (c *Config) xtreamGenerateM3u(ctx *gin.Context) (*m3u.Playlist, error) {
+func (c *Config) xtreamGenerateM3u(ctx *gin.Context, extension string) (*m3u.Playlist, error) {
 	client, err := xtreamapi.New(c.XtreamUser.String(), c.XtreamPassword.String(), c.XtreamBaseURL, ctx.Request.UserAgent())
 	if err != nil {
 		return nil, err
@@ -86,7 +86,6 @@ func (c *Config) xtreamGenerateM3u(ctx *gin.Context) (*m3u.Playlist, error) {
 	// this is specific to xtream API,
 	// prefix with "live" if there is an extension.
 	var prefix string
-	extension := ctx.Query("output")
 	if extension != "" {
 		prefix = "live/"
 	}
@@ -192,18 +191,23 @@ func (c *Config) xtreamApiGet(ctx *gin.Context) {
 		apiGet = "apiget"
 	)
 
+	var (
+		extension = ctx.Query("output")
+		cacheName = apiGet + extension
+	)
+
 	xtreamM3uCacheLock.RLock()
-	meta, ok := xtreamM3uCache[apiGet]
+	meta, ok := xtreamM3uCache[cacheName]
 	d := time.Since(meta.Time)
 	if !ok || d.Hours() >= float64(c.M3UCacheExpiration) {
 		log.Printf("[iptv-proxy] %v | %s | xtream cache API m3u file\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP())
 		xtreamM3uCacheLock.RUnlock()
-		playlist, err := c.xtreamGenerateM3u(ctx)
+		playlist, err := c.xtreamGenerateM3u(ctx, extension)
 		if err != nil {
 			ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 			return
 		}
-		if err := c.cacheXtreamM3u(playlist, apiGet); err != nil {
+		if err := c.cacheXtreamM3u(playlist, cacheName); err != nil {
 			ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 			return
 		}
@@ -213,7 +217,7 @@ func (c *Config) xtreamApiGet(ctx *gin.Context) {
 
 	ctx.Header("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, c.M3UFileName))
 	xtreamM3uCacheLock.RLock()
-	path := xtreamM3uCache[apiGet].string
+	path := xtreamM3uCache[cacheName].string
 	xtreamM3uCacheLock.RUnlock()
 	ctx.Header("Content-Type", "application/octet-stream")
 
