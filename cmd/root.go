@@ -73,17 +73,18 @@ var rootCmd = &cobra.Command{
 				Hostname: viper.GetString("hostname"),
 				Port:     viper.GetInt("port"),
 			},
-			RemoteURL:          remoteHostURL,
-			XtreamUser:         config.CredentialString(xtreamUser),
-			XtreamPassword:     config.CredentialString(xtreamPassword),
-			XtreamBaseURL:      xtreamBaseURL,
-			M3UCacheExpiration: viper.GetInt("m3u-cache-expiration"),
-			User:               config.CredentialString(viper.GetString("user")),
-			Password:           config.CredentialString(viper.GetString("password")),
-			AdvertisedPort:     viper.GetInt("advertised-port"),
-			HTTPS:              viper.GetBool("https"),
-			M3UFileName:        viper.GetString("m3u-file-name"),
-			CustomEndpoint:     viper.GetString("custom-endpoint"),
+			RemoteURL:            remoteHostURL,
+			XtreamUser:           config.CredentialString(xtreamUser),
+			XtreamPassword:       config.CredentialString(xtreamPassword),
+			XtreamBaseURL:        xtreamBaseURL,
+			M3UCacheExpiration:   viper.GetInt("m3u-cache-expiration"),
+			User:                 config.CredentialString(viper.GetString("user")),
+			Password:             config.CredentialString(viper.GetString("password")),
+			AdvertisedPort:       viper.GetInt("advertised-port"),
+			HTTPS:                viper.GetBool("https"),
+			M3UFileName:          viper.GetString("m3u-file-name"),
+			CustomEndpoint:       viper.GetString("custom-endpoint"),
+			XtreamGenerateApiGet: viper.GetBool("xtream-api-get"),
 		}
 
 		if conf.AdvertisedPort == 0 {
@@ -130,6 +131,7 @@ func init() {
 	rootCmd.Flags().String("xtream-password", "", "Xtream-code password login")
 	rootCmd.Flags().String("xtream-base-url", "", "Xtream-code base url e.g(http://expample.tv:8080)")
 	rootCmd.Flags().Int("m3u-cache-expiration", 1, "M3U cache expiration in hour")
+	rootCmd.Flags().BoolP("xtream-api-get", "", false, "Generate get.php from xtream API instead of get.php original endpoint")
 
 	if e := viper.BindPFlags(rootCmd.Flags()); e != nil {
 		log.Fatal("error binding PFlags to viper")

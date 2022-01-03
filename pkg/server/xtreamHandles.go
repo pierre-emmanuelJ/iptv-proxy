@@ -50,17 +50,12 @@ var hlsChannelsRedirectURLLock = sync.RWMutex{}
 var xtreamM3uCache map[string]cacheMeta = map[string]cacheMeta{}
 var xtreamM3uCacheLock = sync.RWMutex{}
 
-func (c *Config) cacheXtreamM3u(m3uURL *url.URL) error {
+func (c *Config) cacheXtreamM3u(playlist *m3u.Playlist, cacheName string) error {
 	xtreamM3uCacheLock.Lock()
 	defer xtreamM3uCacheLock.Unlock()
 
-	playlist, err := m3u.Parse(m3uURL.String())
-	if err != nil {
-		return err
-	}
-
 	tmp := *c
-	tmp.playlist = &playlist
+	tmp.playlist = playlist
 
 	path := filepath.Join(os.TempDir(), uuid.NewV4().String()+".iptv-proxy.m3u")
 	f, err := os.Create(path)
@@ -72,9 +67,61 @@ func (c *Config) cacheXtreamM3u(m3uURL *url.URL) error {
 	if err := tmp.marshallInto(f, true); err != nil {
 		return err
 	}
-	xtreamM3uCache[m3uURL.String()] = cacheMeta{path, time.Now()}
+	xtreamM3uCache[cacheName] = cacheMeta{path, time.Now()}
 
 	return nil
+}
+
+func (c *Config) xtreamGenerateM3u(ctx *gin.Context, extension string) (*m3u.Playlist, error) {
+	client, err := xtreamapi.New(c.XtreamUser.String(), c.XtreamPassword.String(), c.XtreamBaseURL, ctx.Request.UserAgent())
+	if err != nil {
+		return nil, err
+	}
+
+	cat, err := client.GetLiveCategories()
+	if err != nil {
+		return nil, err
+	}
+
+	// this is specific to xtream API,
+	// prefix with "live" if there is an extension.
+	var prefix string
+	if extension != "" {
+		prefix = "live/"
+	}
+
+	var playlist = new(m3u.Playlist)
+	playlist.Tracks = make([]m3u.Track, 0)
+
+	for _, category := range cat {
+		live, err := client.GetLiveStreams(fmt.Sprint(category.ID))
+		if err != nil {
+			return nil, err
+		}
+
+		for _, stream := range live {
+			track := m3u.Track{Name: stream.Name, Length: -1, URI: "", Tags: nil}
+
+			//TODO: Add more tag if needed.
+			if stream.EPGChannelID != "" {
+				track.Tags = append(track.Tags, m3u.Tag{Name: "tvg-id", Value: stream.EPGChannelID})
+			}
+			if stream.Name != "" {
+				track.Tags = append(track.Tags, m3u.Tag{Name: "tvg-name", Value: stream.Name})
+			}
+			if stream.Icon != "" {
+				track.Tags = append(track.Tags, m3u.Tag{Name: "tvg-logo", Value: stream.Icon})
+			}
+			if category.Name != "" {
+				track.Tags = append(track.Tags, m3u.Tag{Name: "group-title", Value: category.Name})
+			}
+
+			track.URI = fmt.Sprintf("%s/%s%s/%s/%s.%s", c.XtreamBaseURL, prefix, c.XtreamUser, c.XtreamPassword, fmt.Sprint(stream.ID), extension)
+			playlist.Tracks = append(playlist.Tracks, track)
+		}
+	}
+
+	return playlist, nil
 }
 
 func (c *Config) xtreamGetAuto(ctx *gin.Context) {
@@ -117,7 +164,12 @@ func (c *Config) xtreamGet(ctx *gin.Context) {
 	if !ok || d.Hours() >= float64(c.M3UCacheExpiration) {
 		log.Printf("[iptv-proxy] %v | %s | xtream cache m3u file\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP())
 		xtreamM3uCacheLock.RUnlock()
-		if err := c.cacheXtreamM3u(m3uURL); err != nil {
+		playlist, err := m3u.Parse(m3uURL.String())
+		if err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+			return
+		}
+		if err := c.cacheXtreamM3u(&playlist, m3uURL.String()); err != nil {
 			ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 			return
 		}
@@ -132,6 +184,45 @@ func (c *Config) xtreamGet(ctx *gin.Context) {
 	ctx.Header("Content-Type", "application/octet-stream")
 
 	ctx.File(path)
+}
+
+func (c *Config) xtreamApiGet(ctx *gin.Context) {
+	const (
+		apiGet = "apiget"
+	)
+
+	var (
+		extension = ctx.Query("output")
+		cacheName = apiGet + extension
+	)
+
+	xtreamM3uCacheLock.RLock()
+	meta, ok := xtreamM3uCache[cacheName]
+	d := time.Since(meta.Time)
+	if !ok || d.Hours() >= float64(c.M3UCacheExpiration) {
+		log.Printf("[iptv-proxy] %v | %s | xtream cache API m3u file\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP())
+		xtreamM3uCacheLock.RUnlock()
+		playlist, err := c.xtreamGenerateM3u(ctx, extension)
+		if err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+			return
+		}
+		if err := c.cacheXtreamM3u(playlist, cacheName); err != nil {
+			ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+			return
+		}
+	} else {
+		xtreamM3uCacheLock.RUnlock()
+	}
+
+	ctx.Header("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, c.M3UFileName))
+	xtreamM3uCacheLock.RLock()
+	path := xtreamM3uCache[cacheName].string
+	xtreamM3uCacheLock.RUnlock()
+	ctx.Header("Content-Type", "application/octet-stream")
+
+	ctx.File(path)
+
 }
 
 func (c *Config) xtreamPlayerAPIGET(ctx *gin.Context) {
