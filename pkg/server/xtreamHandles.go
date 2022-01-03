@@ -157,7 +157,7 @@ func (c *Config) xtreamGet(ctx *gin.Context) {
 	if !ok || d.Hours() >= float64(c.M3UCacheExpiration) {
 		log.Printf("[iptv-proxy] %v | %s | xtream cache m3u file\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP())
 		xtreamM3uCacheLock.RUnlock()
-		playlist, err := m3u.Parse(m3uURL.Path)
+		playlist, err := m3u.Parse(m3uURL.String())
 		if err != nil {
 			ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 			return
