@@ -142,7 +142,7 @@ type VideoOnDemandInfo struct {
 		Plot           string           `json:"plot"`
 		Rating         string           `json:"rating"`
 		ReleaseDate    string           `json:"releasedate"`
-		TmdbID         string           `json:"tmdb_id"`
+		TmdbID         FlexInt          `json:"tmdb_id"`
 		Video          FFMPEGStreamInfo `json:"video"`
 		YoutubeTrailer string           `json:"youtube_trailer"`
 	} `json:"info"`
