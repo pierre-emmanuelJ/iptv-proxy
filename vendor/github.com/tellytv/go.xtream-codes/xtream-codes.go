@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 )
 
@@ -34,7 +36,6 @@ type XtreamClient struct {
 
 // NewClient returns an initialized XtreamClient with the given values.
 func NewClient(username, password, baseURL string) (*XtreamClient, error) {
-
 	_, parseURLErr := url.Parse(baseURL)
 	if parseURLErr != nil {
 		return nil, fmt.Errorf("error parsing url: %s", parseURLErr.Error())
@@ -72,16 +73,26 @@ func NewClient(username, password, baseURL string) (*XtreamClient, error) {
 // NewClientWithContext returns an initialized XtreamClient with the given values.
 func NewClientWithContext(ctx context.Context, username, password, baseURL string) (*XtreamClient, error) {
 	c, err := NewClient(username, password, baseURL)
+	if err != nil {
+		return nil, err
+	}
+
 	c.Context = ctx
-	return c, err
+
+	return c, nil
 }
 
 // NewClientWithUserAgent returns an initialized XtreamClient with the given values.
 func NewClientWithUserAgent(ctx context.Context, username, password, baseURL, userAgent string) (*XtreamClient, error) {
 	c, err := NewClient(username, password, baseURL)
+	if err != nil {
+		return nil, err
+	}
+
 	c.UserAgent = userAgent
 	c.Context = ctx
-	return c, err
+
+	return c, nil
 }
 
 // GetStreamURL will return a stream URL string for the given streamID and wantedFormat.
@@ -187,7 +198,7 @@ func (c *XtreamClient) GetStreams(streamAction, categoryID string) ([]Stream, er
 	}
 
 	for _, stream := range streams {
-		c.streams[stream.ID] = stream
+		c.streams[int(stream.ID)] = stream
 	}
 
 	return streams, nil
@@ -299,6 +310,7 @@ func (c *XtreamClient) sendRequest(action string, parameters url.Values) ([]byte
 	if action == "xmltv.php" {
 		file = action
 	}
+
 	url := fmt.Sprintf("%s/%s?username=%s&password=%s", c.BaseURL, file, c.Username, c.Password)
 	if action != "" {
 		url = fmt.Sprintf("%s&action=%s", url, action)
@@ -334,5 +346,12 @@ func (c *XtreamClient) sendRequest(action string, parameters url.Values) ([]byte
 		return nil, fmt.Errorf("cannot read response. %v", closeErr)
 	}
 
-	return buf.Bytes(), nil
+	data := buf.Bytes()
+
+	if _, ok := os.LookupEnv("XTREAM_DEBUG"); ok {
+		j, _ := json.MarshalIndent(data, "", "  ")
+		log.Println(string(j))
+	}
+
+	return data, nil
 }
