@@ -349,8 +349,7 @@ func (c *XtreamClient) sendRequest(action string, parameters url.Values) ([]byte
 	data := buf.Bytes()
 
 	if _, ok := os.LookupEnv("XTREAM_DEBUG"); ok {
-		j, _ := json.MarshalIndent(data, "", "  ")
-		log.Println(string(j))
+		log.Println(string(data))
 	}
 
 	return data, nil
