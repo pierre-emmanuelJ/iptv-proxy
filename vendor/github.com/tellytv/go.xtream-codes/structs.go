@@ -140,7 +140,7 @@ type VideoOnDemandInfo struct {
 		Genre          string           `json:"genre"`
 		MovieImage     string           `json:"movie_image"`
 		Plot           string           `json:"plot"`
-		Rating         string           `json:"rating"`
+		Rating         FlexFloat        `json:"rating"`
 		ReleaseDate    string           `json:"releasedate"`
 		TmdbID         FlexInt          `json:"tmdb_id"`
 		Video          FFMPEGStreamInfo `json:"video"`
