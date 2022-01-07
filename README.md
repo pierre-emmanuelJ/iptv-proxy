@@ -260,4 +260,7 @@ and auth with token...
 - [go.xtream-codes](https://github.com/tellytv/go.xtream-codes)
 - [gin](https://github.com/gin-gonic/gin)
 
+Grab me a beer 🍻
+
+[![paypal](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/donate?hosted_button_id=WQAAMQWJPKHUN)
 
