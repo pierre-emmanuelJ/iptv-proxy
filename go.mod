@@ -6,11 +6,10 @@ require (
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jamesnetherton/m3u v0.1.1-0.20180924175816-16741c7f081c
 	github.com/mitchellh/go-homedir v1.1.0
-	github.com/onsi/gomega v1.7.1 // indirect
 	github.com/satori/go.uuid v1.2.0
 	github.com/spf13/cobra v1.2.1
 	github.com/spf13/viper v1.8.1
-	github.com/tellytv/go.xtream-codes v0.0.0-20190427212115-45e8162ba888
+	github.com/tellytv/go.xtream-codes v0.0.0-20220110144747-b72d9dcb3195
 )
 
 require (
@@ -37,7 +36,7 @@ require (
 	github.com/ugorji/go/codec v1.1.7 // indirect
 	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9 // indirect
 	golang.org/x/sys v0.0.0-20210510120138-977fb7262007 // indirect
-	golang.org/x/text v0.3.5 // indirect
+	golang.org/x/text v0.3.6 // indirect
 	google.golang.org/protobuf v1.26.0 // indirect
 	gopkg.in/ini.v1 v1.62.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

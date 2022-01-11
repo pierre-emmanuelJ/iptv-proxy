@@ -1,17 +1,7 @@
 package xtreamcodes
 
-// PanelInfo has all the general information
-type PanelInfo struct {
-	UserInfo   UserInfo   `json:"user_info"`
-	ServerInfo ServerInfo `json:"server_info"`
-	Categories struct {
-		Series []Category `json:"series"`
-		Live   []Category `json:"live"`
-		Radio  []Category `json:"radio"`
-		Movie  []Category `json:"movie"`
-	} `json:"categories"`
-	AvailableChannels map[string]Stream `json:"available_channels"`
-}
+// TODO: Add more flex types on IDs if needed
+// for future potential provider issues.
 
 // ServerInfo describes the state of the Xtream-Codes server.
 type ServerInfo struct {
