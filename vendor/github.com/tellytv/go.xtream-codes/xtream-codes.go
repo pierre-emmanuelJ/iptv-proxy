@@ -187,7 +187,7 @@ func (c *XtreamClient) GetStreams(streamAction, categoryID string) ([]Stream, er
 	}
 
 	for _, stream := range streams {
-		c.streams[stream.ID] = stream
+		c.streams[int(stream.ID)] = stream
 	}
 
 	return streams, nil
