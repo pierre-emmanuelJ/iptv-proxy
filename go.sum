@@ -185,8 +185,8 @@ github.com/ianlancetaylor/demangle v0.0.0-20181102032728-5e5cf60278f6/go.mod h1:
 github.com/ianlancetaylor/demangle v0.0.0-20200824232613-28f6c0f3b639/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
 github.com/inconshreveable/mousetrap v1.0.0 h1:Z8tu5sraLXCXIcARxBp/8cbvlwVa7Z1NHg9XEKhtSvM=
 github.com/inconshreveable/mousetrap v1.0.0/go.mod h1:PxqpIevigyE2G7u3NXJIT2ANytuPF1OarO4DADm73n8=
-github.com/jamesnetherton/m3u v0.1.1-0.20180924175816-16741c7f081c h1:TlVVjzolJLEe3TDyTlIuCCTuApI5vxpaLihVC/Hrexk=
-github.com/jamesnetherton/m3u v0.1.1-0.20180924175816-16741c7f081c/go.mod h1:YFaujUKOi5qfiqY3rjkB6ty3YWXBcys/6MuSOX5TrHs=
+github.com/jamesnetherton/m3u v0.4.0 h1:whEon8Bj6AAtejE7lkhE83qKxyZR6xFkADGcerYDWlA=
+github.com/jamesnetherton/m3u v0.4.0/go.mod h1:wiM6FnmepH4gnwvaeBvppddHiTHmy5u/hx7wPa140mA=
 github.com/json-iterator/go v1.1.5/go.mod h1:+SdeFBvtyEkXs7REEP0seUULqWtbJapLOCVDaaPEHmU=
 github.com/json-iterator/go v1.1.9/go.mod h1:KdQUCv79m/52Kvf8AW2vK1V8akMuk1QjK/uOdHXbAo4=
 github.com/json-iterator/go v1.1.11 h1:uVUAXhF2To8cbw/3xN3pxj6kk7TYKs98NIrTqPlMWAQ=

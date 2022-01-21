@@ -42,8 +42,8 @@ github.com/hashicorp/hcl/json/token
 # github.com/inconshreveable/mousetrap v1.0.0
 ## explicit
 github.com/inconshreveable/mousetrap
-# github.com/jamesnetherton/m3u v0.1.1-0.20180924175816-16741c7f081c
-## explicit
+# github.com/jamesnetherton/m3u v0.4.0
+## explicit; go 1.17
 github.com/jamesnetherton/m3u
 # github.com/json-iterator/go v1.1.11
 ## explicit; go 1.12
