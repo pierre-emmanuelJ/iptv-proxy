@@ -72,16 +72,24 @@ func NewClient(username, password, baseURL string) (*XtreamClient, error) {
 // NewClientWithContext returns an initialized XtreamClient with the given values.
 func NewClientWithContext(ctx context.Context, username, password, baseURL string) (*XtreamClient, error) {
 	c, err := NewClient(username, password, baseURL)
+	if err != nil {
+		return nil, err
+	}
 	c.Context = ctx
-	return c, err
+
+	return c, nil
 }
 
 // NewClientWithUserAgent returns an initialized XtreamClient with the given values.
 func NewClientWithUserAgent(ctx context.Context, username, password, baseURL, userAgent string) (*XtreamClient, error) {
 	c, err := NewClient(username, password, baseURL)
+	if err != nil {
+		return nil, err
+	}
 	c.UserAgent = userAgent
 	c.Context = ctx
-	return c, err
+
+	return c, nil
 }
 
 // GetStreamURL will return a stream URL string for the given streamID and wantedFormat.
