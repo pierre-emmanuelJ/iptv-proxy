@@ -97,7 +97,7 @@ github.com/spf13/viper
 # github.com/subosito/gotenv v1.2.0
 ## explicit
 github.com/subosito/gotenv
-# github.com/tellytv/go.xtream-codes v0.0.0-20220110144747-b72d9dcb3195
+# github.com/tellytv/go.xtream-codes v0.0.0-20220204001149-59925bc76764
 ## explicit; go 1.17
 github.com/tellytv/go.xtream-codes
 # github.com/ugorji/go/codec v1.1.7

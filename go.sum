@@ -282,8 +282,8 @@ github.com/stretchr/testify v1.7.0 h1:nwc3DEeHmmLAfoZucVR881uASk0Mfjw8xYJ99tb5Cc
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/subosito/gotenv v1.2.0 h1:Slr1R9HxAlEKefgq5jn9U+DnETlIUa6HfgEzj0g5d7s=
 github.com/subosito/gotenv v1.2.0/go.mod h1:N0PQaV/YGNqwC0u51sEeR/aUtSLEXKX9iv69rRypqCw=
-github.com/tellytv/go.xtream-codes v0.0.0-20220110144747-b72d9dcb3195 h1:Tm9sCv8fesKxX+NIfkbZPn6otBK+7lWWiz0czAf4sw8=
-github.com/tellytv/go.xtream-codes v0.0.0-20220110144747-b72d9dcb3195/go.mod h1:8fbwWl4BCtFxxEhTTAqzjN11aC5TKWdc3yHlH/iXORo=
+github.com/tellytv/go.xtream-codes v0.0.0-20220204001149-59925bc76764 h1:0ndlBWeI4p3jyzr5KWrtOVQsCimAUBo86/svYFDTgVo=
+github.com/tellytv/go.xtream-codes v0.0.0-20220204001149-59925bc76764/go.mod h1:8fbwWl4BCtFxxEhTTAqzjN11aC5TKWdc3yHlH/iXORo=
 github.com/ugorji/go v1.1.7 h1:/68gy2h+1mWMrwZFeD1kQialdSzAb432dtpeJ42ovdo=
 github.com/ugorji/go v1.1.7/go.mod h1:kZn38zHttfInRq0xu/PH0az30d+z6vm202qpg1oXVMw=
 github.com/ugorji/go/codec v0.0.0-20181209151446-772ced7fd4c2/go.mod h1:VFNgLljTbGfSG7qAOspJ7OScBnGdDN/yBr0sguwnwf0=
