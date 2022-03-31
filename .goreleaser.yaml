@@ -49,7 +49,7 @@ dockers:
     - "pierro777/iptv-proxy:v{{ .Major }}-arm64"
     - "pierro777/iptv-proxy:v{{ .Major }}.{{ .Minor }}-arm64"
     - "pierro777/iptv-proxy:latest-arm64"
-    use_buildx: true
+    use: buildx
     goos: linux
     goarch: arm64
     ids:
@@ -80,7 +80,7 @@ dockers:
     - "pierro777/iptv-proxy:v{{ .Major }}"
     - "pierro777/iptv-proxy:v{{ .Major }}.{{ .Minor }}"
     - "pierro777/iptv-proxy:latest"
-    use_buildx: true
+    use: buildx
     goos: linux
     goarch: amd64
     ids:
