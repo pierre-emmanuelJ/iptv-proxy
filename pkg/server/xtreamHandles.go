@@ -312,6 +312,18 @@ func (c *Config) xtreamStreamLive(ctx *gin.Context) {
 	c.xtreamStream(ctx, rpURL)
 }
 
+func (c *Config) xtreamStreamPlay(ctx *gin.Context) {
+	token := ctx.Param("token")
+	t := ctx.Param("type")
+	rpURL, err := url.Parse(fmt.Sprintf("%s/play/%s/%s", c.XtreamBaseURL, token, t))
+	if err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		return
+	}
+
+	c.xtreamStream(ctx, rpURL)
+}
+
 func (c *Config) xtreamStreamTimeshift(ctx *gin.Context) {
 	duration := ctx.Param("duration")
 	start := ctx.Param("start")
