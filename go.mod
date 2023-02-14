@@ -2,7 +2,7 @@ module github.com/pierre-emmanuelJ/iptv-proxy
 
 require (
 	github.com/gin-contrib/cors v0.0.0-20190226021855-50921afdc5c1
-	github.com/gin-gonic/gin v1.7.4
+	github.com/gin-gonic/gin v1.7.7
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jamesnetherton/m3u v0.4.0
 	github.com/mitchellh/go-homedir v1.1.0
