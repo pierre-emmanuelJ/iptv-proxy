@@ -64,6 +64,10 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 		}
 	}
 
+        if trimmedCustomId := strings.Trim(config.CustomId, "/"); trimmedCustomId != "" {
+                endpointAntiColision = trimmedCustomId
+        }
+
 	return &Config{
 		config,
 		&p,
