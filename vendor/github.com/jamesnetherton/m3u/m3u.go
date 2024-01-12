@@ -24,10 +24,11 @@ type Tag struct {
 	Value string
 }
 
-// Track represents an m3u track with a Name, Lengh, URI and a set of tags
+// Track represents an m3u track with a Name, Lengh, Group, URI and a set of tags
 type Track struct {
 	Name   string
 	Length int
+	Group  string
 	URI    string
 	Tags   []Tag
 }
@@ -78,7 +79,7 @@ func Parse(fileName string) (Playlist, error) {
 			if parseErr != nil {
 				return Playlist{}, errors.New("unable to parse length")
 			}
-			track := &Track{strings.Trim(trackInfo[1], " "), length, "", nil}
+			track := &Track{strings.Trim(trackInfo[1], " "), length, "", "", nil}
 			tagList := tagsRegExp.FindAllString(line, -1)
 			for i := range tagList {
 				tagInfo := strings.Split(tagList[i], "=")
@@ -86,6 +87,8 @@ func Parse(fileName string) (Playlist, error) {
 				track.Tags = append(track.Tags, *tag)
 			}
 			playlist.Tracks = append(playlist.Tracks, *track)
+		} else if strings.HasPrefix(line, "#EXTGRP") {
+			playlist.Tracks[len(playlist.Tracks)-1].Group = strings.Trim(line, " ")
 		} else if strings.HasPrefix(line, "#") || line == "" {
 			continue
 		} else if len(playlist.Tracks) == 0 {
@@ -125,7 +128,8 @@ func MarshallInto(p Playlist, into *bufio.Writer) error {
 			into.WriteString(fmt.Sprintf("%s=%q ", track.Tags[i].Name, track.Tags[i].Value))
 		}
 		into.WriteString(", ")
-
+		into.WriteString("#EXTGRP:")
+		into.WriteString(fmt.Sprintf("%d ", track.Group))
 		into.WriteString(fmt.Sprintf("%s\n%s\n", track.Name, track.URI))
 	}
 
