@@ -131,7 +131,11 @@ func (c *Config) marshallInto(into *os.File, xtream bool) error {
 			continue
 		}
 
-		into.WriteString(fmt.Sprintf("%s, %s\n%s\n", buffer.String(), track.Name, uri)) // nolint: errcheck
+		if track.Group != "" {
+			into.WriteString(fmt.Sprintf("%s, %s\n%s\n%s\n", buffer.String(), track.Name, track.Group, uri)) // nolint: errcheck
+		} else {
+			into.WriteString(fmt.Sprintf("%s, %s\n%s\n", buffer.String(), track.Name, uri)) // nolint: errcheck
+		}
 
 		filteredTrack = append(filteredTrack, track)
 	}
