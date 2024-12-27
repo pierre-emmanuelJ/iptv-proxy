@@ -264,8 +264,6 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context, q url.Values) {
 		return
 	}
 
-	log.Printf("[iptv-proxy] %v | %s |Action\t%s\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP(), action)
-
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 		return
@@ -377,13 +375,22 @@ func (c *Config) xtreamHlsStream(ctx *gin.Context) {
 		return
 	}
 
+	token, ret := ctx.GetQuery("token")
+	if ret == false {
+		ctx.AbortWithError( // nolint: errcheck
+			http.StatusInternalServerError, 
+			errors.New("Could not get token")
+		)
+		return
+	}
+
 	req, err := url.Parse(
 		fmt.Sprintf(
-			"%s://%s/hls/%s/%s",
+			"%s://%s/hls/%s?token=%s",
 			url.Scheme,
 			url.Host,
-			ctx.Param("token"),
 			ctx.Param("chunk"),
+			token,
 		),
 	)
 
