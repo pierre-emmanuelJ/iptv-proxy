@@ -81,7 +81,7 @@ func (c *Client) login(proxyUser, proxyPassword, proxyURL string, proxyPort int,
 		ServerInfo: xtream.ServerInfo{
 			URL:          proxyURL,
 			Port:         xtream.FlexInt(proxyPort),
-			HTTPSPort:    xtream.FlexInt(proxyPort),
+			HTTPSPort:    c.ServerInfo.HTTPSPort,
 			Protocol:     protocol,
 			RTMPPort:     xtream.FlexInt(proxyPort),
 			Timezone:     c.ServerInfo.Timezone,

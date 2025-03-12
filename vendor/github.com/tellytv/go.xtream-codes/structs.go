@@ -5,7 +5,7 @@ package xtreamcodes
 
 // ServerInfo describes the state of the Xtream-Codes server.
 type ServerInfo struct {
-	HTTPSPort    FlexInt   `json:"https_port,string"`
+	HTTPSPort    string    `json:"https_port"`
 	Port         FlexInt   `json:"port,string"`
 	Process      bool      `json:"process"`
 	RTMPPort     FlexInt   `json:"rtmp_port,string"`
@@ -166,3 +166,4 @@ type EPGInfo struct {
 	StopTimestamp  Timestamp          `json:"stop_timestamp"`
 	Title          Base64Value        `json:"title"`
 }
+
