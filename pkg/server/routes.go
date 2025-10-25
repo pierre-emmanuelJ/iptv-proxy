@@ -48,10 +48,8 @@ func (c *Config) routes(r *gin.RouterGroup) {
 }
 
 func (c *Config) xtreamRoutes(r *gin.RouterGroup) {
-	getphp := gin.HandlerFunc(c.xtreamGet)
-	if c.XtreamGenerateApiGet {
-		getphp = c.xtreamApiGet
-	}
+	// Always use xtreamApiGet to include series and VOD
+	getphp := gin.HandlerFunc(c.xtreamApiGet)
 	r.GET("/get.php", c.authenticate, getphp)
 	r.POST("/get.php", c.authenticate, getphp)
 	r.GET("/apiget", c.authenticate, c.xtreamApiGet)

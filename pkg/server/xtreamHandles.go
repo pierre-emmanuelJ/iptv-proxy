@@ -73,33 +73,39 @@ func (c *Config) cacheXtreamM3u(playlist *m3u.Playlist, cacheName string) error 
 }
 
 func (c *Config) xtreamGenerateM3u(ctx *gin.Context, extension string) (*m3u.Playlist, error) {
+	log.Printf("[iptv-proxy] xtreamGenerateM3u called with extension: %s", extension)
+	
 	client, err := xtreamapi.New(c.XtreamUser.String(), c.XtreamPassword.String(), c.XtreamBaseURL, ctx.Request.UserAgent())
 	if err != nil {
 		return nil, err
 	}
 
-	cat, err := client.GetLiveCategories()
-	if err != nil {
-		return nil, err
-	}
-
-	// this is specific to xtream API,
-	// prefix with "live" if there is an extension.
-	var prefix string
-	if extension != "" {
-		extension = "." + extension
-		prefix = "live/"
-	}
-
 	var playlist = new(m3u.Playlist)
 	playlist.Tracks = make([]m3u.Track, 0)
 
-	for _, category := range cat {
+	// Add Live Streams
+	log.Printf("[iptv-proxy] Getting live categories...")
+	liveCat, err := client.GetLiveCategories()
+	if err != nil {
+		log.Printf("[iptv-proxy] Error getting live categories: %v", err)
+		return nil, err
+	}
+	log.Printf("[iptv-proxy] Found %d live categories", len(liveCat))
+
+	// this is specific to xtream API,
+	// prefix with "live" if there is an extension.
+	var livePrefix string
+	if extension != "" {
+		livePrefix = "live/"
+	}
+
+	for _, category := range liveCat {
 		live, err := client.GetLiveStreams(fmt.Sprint(category.ID))
 		if err != nil {
 			return nil, err
 		}
 
+		liveCount := 0
 		for _, stream := range live {
 			track := m3u.Track{Name: stream.Name, Length: -1, URI: "", Tags: nil}
 
@@ -117,11 +123,97 @@ func (c *Config) xtreamGenerateM3u(ctx *gin.Context, extension string) (*m3u.Pla
 				track.Tags = append(track.Tags, m3u.Tag{Name: "group-title", Value: category.Name})
 			}
 
-			track.URI = fmt.Sprintf("%s/%s%s/%s/%s%s", c.XtreamBaseURL, prefix, c.XtreamUser, c.XtreamPassword, fmt.Sprint(stream.ID), extension)
+			var ext string
+			if extension != "" {
+				ext = "." + extension
+			}
+			track.URI = fmt.Sprintf("%s/%s%s/%s/%s%s", c.XtreamBaseURL, livePrefix, c.XtreamUser, c.XtreamPassword, fmt.Sprint(stream.ID), ext)
+			playlist.Tracks = append(playlist.Tracks, track)
+			liveCount++
+		}
+		log.Printf("[iptv-proxy] Added %d live streams from category: %s", liveCount, category.Name)
+	}
+
+	// Add VOD (Movies)
+	log.Printf("[iptv-proxy] Getting VOD categories...")
+	vodCat, err := client.GetVideoOnDemandCategories()
+	if err != nil {
+		log.Printf("[iptv-proxy] Error getting VOD categories: %v", err)
+		return nil, err
+	}
+	log.Printf("[iptv-proxy] Found %d VOD categories", len(vodCat))
+
+	for _, category := range vodCat {
+		vods, err := client.GetVideoOnDemandStreams(fmt.Sprint(category.ID))
+		if err != nil {
+			return nil, err
+		}
+
+		for _, vod := range vods {
+			track := m3u.Track{Name: vod.Name, Length: -1, URI: "", Tags: nil}
+
+			//TODO: Add more tag if needed.
+			if vod.Name != "" {
+				track.Tags = append(track.Tags, m3u.Tag{Name: "tvg-name", Value: vod.Name})
+			}
+			if vod.Icon != "" {
+				track.Tags = append(track.Tags, m3u.Tag{Name: "tvg-logo", Value: vod.Icon})
+			}
+			if category.Name != "" {
+				track.Tags = append(track.Tags, m3u.Tag{Name: "group-title", Value: category.Name})
+			}
+
+			var ext string
+			if extension != "" {
+				ext = "." + extension
+			}
+			track.URI = fmt.Sprintf("%s/movie/%s/%s/%s%s", c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword, fmt.Sprint(vod.ID), ext)
 			playlist.Tracks = append(playlist.Tracks, track)
 		}
 	}
 
+	// Add Series
+	log.Printf("[iptv-proxy] Getting series categories...")
+	seriesCat, err := client.GetSeriesCategories()
+	if err != nil {
+		log.Printf("[iptv-proxy] Error getting series categories: %v", err)
+		return nil, err
+	}
+	log.Printf("[iptv-proxy] Found %d series categories", len(seriesCat))
+
+	for _, category := range seriesCat {
+		series, err := client.GetSeries(fmt.Sprint(category.ID))
+		if err != nil {
+			return nil, err
+		}
+
+		seriesCount := 0
+		for _, serie := range series {
+			track := m3u.Track{Name: serie.Name, Length: -1, URI: "", Tags: nil}
+
+			//TODO: Add more tag if needed.
+			if serie.Name != "" {
+				track.Tags = append(track.Tags, m3u.Tag{Name: "tvg-name", Value: serie.Name})
+			}
+			if serie.Cover != "" {
+				track.Tags = append(track.Tags, m3u.Tag{Name: "tvg-logo", Value: serie.Cover})
+			}
+			if category.Name != "" {
+				track.Tags = append(track.Tags, m3u.Tag{Name: "group-title", Value: category.Name})
+			}
+
+			var ext string
+			if extension != "" {
+				ext = "." + extension
+			}
+			track.URI = fmt.Sprintf("%s/series/%s/%s/%s%s", c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword, fmt.Sprint(serie.SeriesID), ext)
+			playlist.Tracks = append(playlist.Tracks, track)
+			seriesCount++
+		}
+		log.Printf("[iptv-proxy] Added %d series from category: %s", seriesCount, category.Name)
+	}
+
+	log.Printf("[iptv-proxy] Total tracks in playlist: %d", len(playlist.Tracks))
 	return playlist, nil
 }
 
@@ -188,6 +280,7 @@ func (c *Config) xtreamGet(ctx *gin.Context) {
 }
 
 func (c *Config) xtreamApiGet(ctx *gin.Context) {
+	log.Printf("[iptv-proxy] xtreamApiGet called")
 	const (
 		apiGet = "apiget"
 	)
@@ -196,6 +289,7 @@ func (c *Config) xtreamApiGet(ctx *gin.Context) {
 		extension = ctx.Query("output")
 		cacheName = apiGet + extension
 	)
+	log.Printf("[iptv-proxy] Extension: %s, CacheName: %s", extension, cacheName)
 
 	xtreamM3uCacheLock.RLock()
 	meta, ok := xtreamM3uCache[cacheName]
