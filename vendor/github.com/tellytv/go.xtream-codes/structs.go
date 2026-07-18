@@ -71,7 +71,7 @@ type Stream struct {
 type SeriesInfo struct {
 	BackdropPath   *JSONStringSlice `json:"backdrop_path,omitempty"`
 	Cast           string           `json:"cast"`
-	CategoryID     *FlexInt         `json:"category_id,string"`
+	CategoryID     *FlexInt         `json:"category_id"`
 	Cover          string           `json:"cover"`
 	Director       string           `json:"director"`
 	EpisodeRunTime string           `json:"episode_run_time"`
