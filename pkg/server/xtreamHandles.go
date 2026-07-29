@@ -500,8 +500,8 @@ func (c *Config) hlsXtreamStream(ctx *gin.Context, oriURL *url.URL) {
 			ctx.Data(http.StatusOK, hlsResp.Header.Get("Content-Type"), []byte(body))
 			return
 		}
-		ctx.AbortWithError(http.StatusInternalServerError, errors.New("Unable to HLS stream")) // nolint: errcheck
-		return
+		log.Printf("[iptv-proxy] %v | %s | HLS redirect url not found for channel %s. Location: %s\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP(), id, location.String())
+		ctx.Header("Location", location.String())
 	}
 
 	ctx.Status(resp.StatusCode)
