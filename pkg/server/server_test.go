@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -92,6 +93,40 @@ func newProvider(t *testing.T) *provider {
 		p.hit(r)
 		fmt.Fprint(w, "segment-from-cdn")
 	})
+	// a session playlist whose segments are named by an absolute path, with
+	// a query the segment cannot be fetched without
+	cdn.HandleFunc("/session/abc/index", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		fmt.Fprint(w, "#EXTM3U\n#EXTINF:10,\n/play/hls/tok==/chan/seg_1.ts?h=1&r=2\n")
+	})
+	cdn.HandleFunc("/play/hls/tok==/chan/seg_1.ts", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		fmt.Fprint(w, "segment-play")
+	})
+	// a master playlist: variants, an alternate audio, then segments and a key
+	cdn.HandleFunc("/master.m3u8", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		fmt.Fprint(w, "#EXTM3U\n"+
+			"#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"a\",NAME=\"English\",URI=\"audio/en.m3u8\"\n"+
+			"#EXT-X-STREAM-INF:BANDWIDTH=640996,AUDIO=\"a\"\n"+
+			"variant/v1.m3u8\n")
+	})
+	cdn.HandleFunc("/variant/v1.m3u8", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		fmt.Fprint(w, "#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"../key.bin\"\n#EXTINF:6,\nseg_a.ts\n")
+	})
+	cdn.HandleFunc("/variant/seg_a.ts", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		fmt.Fprint(w, "segment-a")
+	})
+	cdn.HandleFunc("/key.bin", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		fmt.Fprint(w, "the-key")
+	})
+	cdn.HandleFunc("/audio/en.m3u8", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		fmt.Fprint(w, "#EXTM3U\n#EXTINF:6,\nen_1.aac\n")
+	})
 	p.cdn = httptest.NewServer(cdn)
 	t.Cleanup(p.cdn.Close)
 
@@ -130,6 +165,12 @@ func newProvider(t *testing.T) *provider {
 			fmt.Fprint(w, `{"epg_listings":[{"id":"1","title":"not base64 !!","start":"2025-10-02 20:00:00","start_timestamp":"1759428000","now_playing":0}]}`)
 		case "get_series":
 			fmt.Fprint(w, `{"1":{"series_id":7,"name":"Show"}}`) // an object instead of an array
+		case "echo":
+			// an error page repeating the address it was asked
+			w.Header().Set("Content-Type", "text/html")
+			w.Header().Set("Link", "<"+r.URL.RequestURI()+">; rel=self")
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, "<html>404: %s<br>%s</html>", r.URL.RequestURI(), html.EscapeString(r.URL.RequestURI()))
 		case "broken":
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprint(w, `<html>Fatal error</html>`)
@@ -153,6 +194,11 @@ func newProvider(t *testing.T) *provider {
 
 	mux.HandleFunc("/xmltv.php", func(w http.ResponseWriter, r *http.Request) {
 		if !authorized(w, r) {
+			return
+		}
+		if r.URL.Query().Get("fail") != "" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprintf(w, "<html>Busy: %s</html>", r.URL.RequestURI())
 			return
 		}
 		time.Sleep(p.guideDelay) // a large guide takes a while to generate
@@ -184,6 +230,12 @@ func newProvider(t *testing.T) *provider {
 		case <-r.Context().Done():
 		}
 	})
+	mux.HandleFunc("/live/xuser/xpass/missing.ts", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintf(w, "<html>No such stream: %s</html>", r.URL.Path)
+	})
 	mux.HandleFunc("/series/xuser/xpass/5.mp4", func(w http.ResponseWriter, r *http.Request) {
 		p.hit(r)
 		fmt.Fprint(w, "episode")
@@ -199,8 +251,22 @@ func newProvider(t *testing.T) *provider {
 	})
 	mux.HandleFunc("/live/xuser/xpass/3.m3u8", func(w http.ResponseWriter, r *http.Request) {
 		p.hit(r)
+		if r.Header.Get("Accept-Encoding") != "" {
+			// a compressed playlist could not be rewritten
+			http.Error(w, "asked for a compressed playlist", http.StatusNotAcceptable)
+			return
+		}
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-		fmt.Fprintf(w, "#EXTM3U\n#EXTINF:10,\n3_1.ts\n#EXTINF:10,\n%s/live/xuser/xpass/3_2.ts\n", p.URL)
+		playlist := fmt.Sprintf("#EXTM3U\n#EXTINF:10,\n3_1.ts\n#EXTINF:10,\n%s/live/xuser/xpass/3_2.ts\n", p.URL)
+		w.Header().Set("Etag", `"original"`)
+		if r.Header.Get("Range") != "" {
+			// players ask "bytes=0-": the answer describes the original bytes
+			w.Header().Set("Accept-Ranges", "bytes")
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes 0-%d/%d", len(playlist)-1, len(playlist)))
+			w.Header().Set("Content-Length", fmt.Sprint(len(playlist)))
+			w.WriteHeader(http.StatusPartialContent)
+		}
+		fmt.Fprint(w, playlist)
 	})
 	mux.HandleFunc("/live/xuser/xpass/3_1.ts", func(w http.ResponseWriter, r *http.Request) {
 		p.hit(r)
@@ -208,7 +274,7 @@ func newProvider(t *testing.T) *provider {
 	})
 	mux.HandleFunc("/live/xuser/xpass/4.m3u8", func(w http.ResponseWriter, r *http.Request) {
 		p.hit(r)
-		http.Redirect(w, r, "http://elsewhere.example/token/index", http.StatusFound)
+		http.Redirect(w, r, p.cdn.URL+"/session/abc/index", http.StatusFound)
 	})
 	// A live stream that never ends.
 	mux.HandleFunc("/live/xuser/xpass/9.ts", func(w http.ResponseWriter, r *http.Request) {
@@ -236,7 +302,12 @@ func newProvider(t *testing.T) *provider {
 			"#EXTGRP:News\n"+
 			"%[1]s/stream/a.ts?token=1\n"+
 			"#EXTINF:-1,Broken\nhttp://%%zz/broken\n"+
-			"#EXTINF:-1,Two\n%[1]s/hls/b.m3u8?token=2\n", p.URL)
+			"#EXTINF:-1,Two\n%[1]s/hls/b.m3u8?token=2\n"+
+			"#EXTINF:-1,Three\n%[1]s/redirected/c.m3u8\n", p.URL)
+	})
+	mux.HandleFunc("/redirected/c.m3u8", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		http.Redirect(w, r, p.cdn.URL+"/master.m3u8", http.StatusFound)
 	})
 	mux.HandleFunc("/stream/a.ts", func(w http.ResponseWriter, r *http.Request) {
 		p.hit(r)
@@ -310,6 +381,38 @@ func get(t *testing.T, rawURL string, header ...string) (*http.Response, string)
 }
 
 const creds = "username=" + user + "&password=" + pass
+
+// addresses returns what an HLS playlist asks the player to fetch: its
+// address lines and the URI attributes of its tags.
+func addresses(playlist string) []string {
+	var out []string
+	for _, line := range strings.Split(playlist, "\n") {
+		line = strings.TrimSpace(line)
+		if i := strings.Index(line, `URI="`); strings.HasPrefix(line, "#") && i >= 0 {
+			rest := line[i+5:]
+			out = append(out, rest[:strings.IndexByte(rest, '"')])
+		} else if line != "" && !strings.HasPrefix(line, "#") {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// hlsAddresses checks that a playlist only names the proxy, and returns
+// its addresses.
+func hlsAddresses(t *testing.T, playlist, prefix string) []string {
+	t.Helper()
+	refs := addresses(playlist)
+	if len(refs) == 0 {
+		t.Fatalf("no address in the playlist:\n%s", playlist)
+	}
+	for _, ref := range refs {
+		if !strings.HasPrefix(ref, prefix+"/hls/") {
+			t.Fatalf("%q is not served by the proxy, in:\n%s", ref, playlist)
+		}
+	}
+	return refs
+}
 
 // lockedBuffer collects what concurrent handlers log.
 type lockedBuffer struct {
@@ -420,6 +523,34 @@ func TestAPIProviderErrorIsPassedOn(t *testing.T) {
 	resp, body := get(t, base+"/player_api.php?"+creds+"&action=broken")
 	if resp.StatusCode != http.StatusInternalServerError || !strings.Contains(body, "Fatal error") {
 		t.Errorf("status %d, body %q", resp.StatusCode, body)
+	}
+}
+
+// A provider's error page may repeat the address it was asked: its
+// credentials are in it, in an order and a form of its own.
+func TestProviderErrorPagesDoNotCarryItsCredentials(t *testing.T) {
+	p := newProvider(t)
+	base := proxy(t, p, nil)
+
+	for path, want := range map[string]int{
+		"/player_api.php?" + creds + "&action=echo&stream_id=1&limit=2": http.StatusNotFound,
+		"/live/me/secret/missing.ts":                                    http.StatusNotFound,
+		"/xmltv.php?" + creds + "&fail=1":                               http.StatusServiceUnavailable,
+	} {
+		resp, body := get(t, base+path)
+		if resp.StatusCode != want {
+			t.Errorf("%s: status = %d, want the provider's %d", path, resp.StatusCode, want)
+		}
+		noProviderCredentials(t, path, body)
+		if !strings.Contains(body, "<html>") || !strings.Contains(body, pass) {
+			t.Errorf("%s: the page should come through, with the proxy's credentials in place of the provider's:\n%s", path, body)
+		}
+		if cl := resp.Header.Get("Content-Length"); cl != fmt.Sprint(len(body)) {
+			t.Errorf("%s: content length = %s for %d bytes", path, cl, len(body))
+		}
+		for name, values := range resp.Header {
+			noProviderCredentials(t, path+" header "+name, strings.Join(values, " "))
+		}
 	}
 }
 
@@ -714,7 +845,7 @@ func TestErrorsDoNotCarryTheProviderAddress(t *testing.T) {
 	}
 }
 
-// --- Xtream HLS ---
+// --- HLS, whatever the provider ---
 
 func TestHLSRedirectedToAnotherHost(t *testing.T) {
 	p := newProvider(t)
@@ -725,12 +856,15 @@ func TestHLSRedirectedToAnotherHost(t *testing.T) {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
 	noProviderCredentials(t, "playlist", playlist)
-	if want := "/hlsr/tok/me/secret/2/hash/seg1.ts"; !strings.Contains(playlist, want) {
-		t.Fatalf("playlist does not name its segment through the proxy:\n%s", playlist)
+	refs := hlsAddresses(t, playlist, "")
+	if !strings.HasSuffix(refs[0], "/seg1.ts") {
+		t.Errorf("the segment lost its name: %q", refs[0])
+	}
+	if strings.Contains(playlist, p.cdn.URL) {
+		t.Errorf("the provider's host is named:\n%s", playlist)
 	}
 
-	resp, body := get(t, base+"/hlsr/tok/me/secret/2/hash/seg1.ts")
-	if resp.StatusCode != http.StatusOK || body != "segment-from-cdn" {
+	if resp, body := get(t, base+refs[0]); resp.StatusCode != http.StatusOK || body != "segment-from-cdn" {
 		t.Errorf("segment: status %d, body %q", resp.StatusCode, body)
 	}
 }
@@ -739,37 +873,155 @@ func TestHLSServedDirectly(t *testing.T) {
 	p := newProvider(t)
 	base := proxy(t, p, nil)
 
-	resp, playlist := get(t, base+"/live/me/secret/3.m3u8")
-	want := "#EXTM3U\n#EXTINF:10,\n3_1.ts\n#EXTINF:10,\nhttp://proxy.example:8080/live/me/secret/3_2.ts\n"
-	if resp.StatusCode != http.StatusOK || playlist != want {
-		t.Fatalf("status %d, playlist:\n%s\nwant:\n%s", resp.StatusCode, playlist, want)
+	resp, playlist := get(t, base+"/live/me/secret/3.m3u8", "Accept-Encoding", "gzip, deflate")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
 	}
-	if cl := resp.Header.Get("Content-Length"); cl != fmt.Sprint(len(want)) {
-		t.Errorf("content length = %s for %d bytes", cl, len(want))
+	noProviderCredentials(t, "playlist", playlist)
+	if cl := resp.Header.Get("Content-Length"); cl != fmt.Sprint(len(playlist)) {
+		t.Errorf("content length = %s for %d bytes", cl, len(playlist))
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/vnd.apple.mpegurl" {
+		t.Errorf("content type = %q", ct)
+	}
+	if !strings.HasPrefix(playlist, "#EXTM3U\n#EXTINF:10,\n/hls/") {
+		t.Errorf("the playlist's own lines changed:\n%s", playlist)
 	}
 
-	// a segment named relative to the playlist is asked next to it
-	if resp, body := get(t, base+"/live/me/secret/3_1.ts"); resp.StatusCode != http.StatusOK || body != "segment-3-1" {
+	// a relative address and an absolute one, both through the proxy
+	refs := hlsAddresses(t, playlist, "")
+	if len(refs) != 2 {
+		t.Fatalf("addresses = %q", refs)
+	}
+	if resp, body := get(t, base+refs[0]); resp.StatusCode != http.StatusOK || body != "segment-3-1" {
+		t.Errorf("segment: status %d, body %q", resp.StatusCode, body)
+	}
+
+	// a player recognizes a segment by its address from one refresh to the next
+	if _, again := get(t, base+"/live/me/secret/3.m3u8"); again != playlist {
+		t.Errorf("the same playlist gave other addresses:\n%s\n%s", playlist, again)
+	}
+}
+
+// Players ask for a playlist with "Range: bytes=0-". The provider's answer
+// gives the size of its own playlist: passed on, it would make the player cut
+// the rewritten one, which is longer.
+func TestHLSPlaylistAskedWithARange(t *testing.T) {
+	p := newProvider(t)
+	base := proxy(t, p, nil)
+
+	_, whole := get(t, base+"/live/me/secret/3.m3u8")
+	resp, ranged := get(t, base+"/live/me/secret/3.m3u8", "Range", "bytes=0-")
+	if resp.StatusCode != http.StatusOK || ranged != whole {
+		t.Errorf("status %d, playlist:\n%s\nwant the whole one:\n%s", resp.StatusCode, ranged, whole)
+	}
+	for _, name := range []string{"Content-Range", "Accept-Ranges", "Etag"} {
+		if v := resp.Header.Get(name); v != "" {
+			t.Errorf("%s = %q describes the provider's playlist, not the one sent", name, v)
+		}
+	}
+	if cl := resp.Header.Get("Content-Length"); cl != fmt.Sprint(len(ranged)) {
+		t.Errorf("content length = %s for %d bytes", cl, len(ranged))
+	}
+}
+
+// The provider redirects to a session playlist whose segments are named by
+// an absolute path and need their query.
+func TestHLSSegmentsOnAnAbsolutePath(t *testing.T) {
+	p := newProvider(t)
+	base := proxy(t, p, nil)
+
+	resp, playlist := get(t, base+"/live/me/secret/4.m3u8")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	refs := hlsAddresses(t, playlist, "")
+
+	if resp, body := get(t, base+refs[0]); resp.StatusCode != http.StatusOK || body != "segment-play" {
+		t.Errorf("segment: status %d, body %q", resp.StatusCode, body)
+	}
+	if q := p.query("/play/hls/tok==/chan/seg_1.ts"); q != "h=1&r=2" {
+		t.Errorf("the segment's query was lost: %q", q)
+	}
+}
+
+func TestHLSBehindACustomEndpoint(t *testing.T) {
+	p := newProvider(t)
+	base := proxy(t, p, func(c *config.ProxyConfig) { c.CustomEndpoint = "/tv/" })
+
+	_, playlist := get(t, base+"/tv/live/me/secret/3.m3u8")
+	refs := hlsAddresses(t, playlist, "/tv")
+	if resp, body := get(t, base+refs[0]); resp.StatusCode != http.StatusOK || body != "segment-3-1" {
 		t.Errorf("segment: status %d, body %q", resp.StatusCode, body)
 	}
 }
 
-func TestHLSRedirectTheProxyCannotServe(t *testing.T) {
+// A token is the right to fetch one address: only this proxy can issue it.
+func TestHLSTokens(t *testing.T) {
 	p := newProvider(t)
 	base := proxy(t, p, nil)
+	_, playlist := get(t, base+"/live/me/secret/3.m3u8")
+	good := hlsAddresses(t, playlist, "")[0]
 
-	resp, _ := get(t, base+"/live/me/secret/4.m3u8")
-	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "http://elsewhere.example/token/index" {
-		t.Errorf("status %d, location %q: the redirect should reach the client", resp.StatusCode, resp.Header.Get("Location"))
+	other := proxy(t, p, func(c *config.ProxyConfig) { c.Password = "another" })
+	_, otherPlaylist := get(t, other+"/live/me/another/3.m3u8")
+	foreign := hlsAddresses(t, otherPlaylist, "")[0]
+
+	token := strings.Split(good, "/")[2]
+	for name, ref := range map[string]string{
+		"garbage":                 "/hls/not-a-token/seg.ts",
+		"empty-ish":               "/hls/AAAA/seg.ts",
+		"truncated":               "/hls/" + token[:len(token)-4] + "/seg.ts",
+		"altered":                 "/hls/" + token[:10] + "A" + token[11:] + "/seg.ts",
+		"issued by another proxy": foreign,
+	} {
+		if ref == good {
+			t.Fatalf("%s: the test did not change the token", name)
+		}
+		if resp, _ := get(t, base+ref); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s: status = %d, want 404", name, resp.StatusCode)
+		}
+	}
+	if n := p.count("/live/xuser/xpass/3_1.ts"); n != 0 {
+		t.Errorf("the provider was asked %d times for refused tokens", n)
+	}
+
+	// the name after the token is free: it only carries the extension
+	if resp, body := get(t, base+"/hls/"+token+"/whatever.ts"); resp.StatusCode != http.StatusOK || body != "segment-3-1" {
+		t.Errorf("status %d, body %q", resp.StatusCode, body)
 	}
 }
 
-func TestHLSSegmentOfAnUnknownChannel(t *testing.T) {
-	p := newProvider(t)
-	base := proxy(t, p, nil)
+func TestAddressTokens(t *testing.T) {
+	tokens, err := newAddressTokens("me", "secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := "http://cdn.example/hlsr/tok/xuser/xpass/2/seg.ts?h=1"
 
-	if resp, _ := get(t, base+"/hlsr/tok/me/secret/77/hash/seg1.ts"); resp.StatusCode != http.StatusInternalServerError {
-		t.Errorf("status = %d", resp.StatusCode)
+	token := tokens.seal(address)
+	if strings.Contains(token, "xpass") || strings.ContainsAny(token, "/+=") {
+		t.Errorf("token = %q", token)
+	}
+	if got, err := tokens.open(token); err != nil || got != address {
+		t.Errorf("open = %q, %v", got, err)
+	}
+	if tokens.seal(address) != token {
+		t.Error("the same address gave two tokens")
+	}
+	if tokens.seal(address+"x") == token {
+		t.Error("two addresses gave the same token")
+	}
+
+	same, _ := newAddressTokens("me", "secret")
+	if got, err := same.open(token); err != nil || got != address {
+		t.Errorf("a restarted proxy does not read its own tokens: %q, %v", got, err)
+	}
+	for name, secrets := range map[string][]string{"other password": {"me", "secret2"}, "shifted": {"mes", "ecret"}} {
+		other, _ := newAddressTokens(secrets...)
+		if _, err := other.open(token); err == nil {
+			t.Errorf("%s: another proxy read the token", name)
+		}
 	}
 }
 
@@ -801,7 +1053,9 @@ func TestM3UPlaylist(t *testing.T) {
 		"#EXTGRP:News\n" +
 		"http://proxy.example:8080/tracks/me/secret/0/a.ts\n" +
 		"#EXTINF:-1,Two\n" +
-		"http://proxy.example:8080/tracks/me/secret/1/b.m3u8\n"
+		"http://proxy.example:8080/tracks/me/secret/1/b.m3u8\n" +
+		"#EXTINF:-1,Three\n" +
+		"http://proxy.example:8080/tracks/me/secret/2/c.m3u8\n"
 	if resp.StatusCode != http.StatusOK || body != want {
 		t.Fatalf("status %d, playlist:\n%s\nwant:\n%s", resp.StatusCode, body, want)
 	}
@@ -822,13 +1076,15 @@ func TestM3UTracks(t *testing.T) {
 		t.Errorf("the track's own query was lost: %q", q)
 	}
 
-	if resp, body := get(t, base+"/tracks/me/secret/1/b.m3u8"); resp.StatusCode != http.StatusOK || !strings.Contains(body, "b_1.ts") {
-		t.Errorf("HLS playlist: status %d, body %q", resp.StatusCode, body)
+	resp, playlist := get(t, base+"/tracks/me/secret/1/b.m3u8")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("HLS playlist: status %d", resp.StatusCode)
 	}
 	if q := p.query("/hls/b.m3u8"); q != "token=2" {
 		t.Errorf("the HLS playlist's query was lost: %q", q)
 	}
-	if resp, body := get(t, base+"/tracks/me/secret/1/b_1.ts"); resp.StatusCode != http.StatusOK || body != "segment-b-1" {
+	refs := hlsAddresses(t, playlist, "")
+	if resp, body := get(t, base+refs[0]); resp.StatusCode != http.StatusOK || body != "segment-b-1" {
 		t.Errorf("HLS segment: status %d, body %q", resp.StatusCode, body)
 	}
 
@@ -836,6 +1092,42 @@ func TestM3UTracks(t *testing.T) {
 		if resp, _ := get(t, base+path); resp.StatusCode != http.StatusNotFound {
 			t.Errorf("%s: status = %d, want 404", path, resp.StatusCode)
 		}
+	}
+}
+
+// A track redirects to another host's master playlist: its variants, its
+// alternate audio, their segments and keys are all reached through the proxy.
+func TestM3UHLSMasterPlaylistOnAnotherHost(t *testing.T) {
+	p := newProvider(t)
+	base := m3uProxy(t, p, nil)
+
+	_, master := get(t, base+"/tracks/me/secret/2/c.m3u8")
+	refs := hlsAddresses(t, master, "")
+	if len(refs) != 2 || !strings.HasSuffix(refs[0], "/en.m3u8") || !strings.HasSuffix(refs[1], "/v1.m3u8") {
+		t.Fatalf("master playlist:\n%s", master)
+	}
+	if !strings.Contains(master, `#EXT-X-STREAM-INF:BANDWIDTH=640996,AUDIO="a"`) {
+		t.Errorf("the master playlist's own lines changed:\n%s", master)
+	}
+
+	_, audio := get(t, base+refs[0])
+	if a := hlsAddresses(t, audio, ""); !strings.HasSuffix(a[0], "/en_1.aac") {
+		t.Errorf("audio playlist:\n%s", audio)
+	}
+
+	_, variant := get(t, base+refs[1])
+	inVariant := hlsAddresses(t, variant, "")
+	if len(inVariant) != 2 {
+		t.Fatalf("variant playlist:\n%s", variant)
+	}
+	if resp, body := get(t, base+inVariant[0]); resp.StatusCode != http.StatusOK || body != "the-key" {
+		t.Errorf("key: status %d, body %q", resp.StatusCode, body)
+	}
+	if resp, body := get(t, base+inVariant[1]); resp.StatusCode != http.StatusOK || body != "segment-a" {
+		t.Errorf("segment: status %d, body %q", resp.StatusCode, body)
+	}
+	if strings.Contains(master+audio+variant, p.cdn.URL) {
+		t.Error("the other host is named in a playlist")
 	}
 }
 

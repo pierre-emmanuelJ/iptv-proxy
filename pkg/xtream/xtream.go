@@ -26,6 +26,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/url"
 	"strconv"
 	"strings"
@@ -101,14 +102,60 @@ func Sanitize(body []byte, provider, proxy Account) []byte {
 		}
 		add(from, to)
 	}
-	for _, sep := range []string{"&", "&amp;"} {
-		add(
-			"username="+url.QueryEscape(provider.User)+sep+"password="+url.QueryEscape(provider.Password),
-			"username="+url.QueryEscape(proxy.User)+sep+"password="+url.QueryEscape(proxy.Password),
-		)
-	}
+	// Query parameters, in any order and whatever sits between them.
+	add("password="+url.QueryEscape(provider.Password), "password="+url.QueryEscape(proxy.Password))
+	add("username="+url.QueryEscape(provider.User), "username="+url.QueryEscape(proxy.User))
 
 	return []byte(strings.NewReplacer(pairs...).Replace(string(body)))
+}
+
+// Scrub replaces every occurrence of the provider's user and password, in
+// any of the forms an address or a page may carry them, by the proxy's. It
+// is meant for what is not data: an error page of the provider, which may
+// well repeat the address it was asked. (In data, a short password could be
+// part of an id: Sanitize is the one to use there.)
+func Scrub(body []byte, provider, proxy Account) []byte {
+	var pairs []string
+	seen := map[string]bool{}
+	add := func(from, to string) {
+		if from == "" || from == to || seen[from] {
+			return
+		}
+		seen[from] = true
+		pairs = append(pairs, from, to)
+	}
+	forms := []func(string) string{
+		func(s string) string { return s },
+		url.QueryEscape,
+		url.PathEscape,
+		html.EscapeString,
+		func(s string) string { return html.EscapeString(url.QueryEscape(s)) },
+	}
+	// The password first: where both could match, the secret one wins.
+	for _, form := range forms {
+		add(form(provider.Password), form(proxy.Password))
+	}
+	for _, form := range forms {
+		add(form(provider.User), form(proxy.User))
+	}
+	if len(pairs) == 0 {
+		return body
+	}
+	return []byte(strings.NewReplacer(pairs...).Replace(string(body)))
+}
+
+// Leaks tells whether a text holds the provider's password in one of the
+// forms Scrub knows.
+func Leaks(text string, provider Account) bool {
+	if provider.Password == "" {
+		return false
+	}
+	for _, form := range []string{provider.Password, url.QueryEscape(provider.Password), url.PathEscape(provider.Password), html.EscapeString(provider.Password)} {
+		if strings.Contains(text, form) {
+			return true
+		}
+	}
+	return false
 }
 
 // ProxyInfo is how the proxy presents itself in a login answer.
