@@ -29,6 +29,7 @@ import (
 
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/server"
 
+	"github.com/gin-gonic/gin"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -86,10 +87,17 @@ var rootCmd = &cobra.Command{
 			CustomId:             viper.GetString("custom-id"),
 			XtreamGenerateApiGet: viper.GetBool("xtream-api-get"),
 			UserAgent:            viper.GetString("user-agent"),
+			NoStreamSharing:      viper.GetBool("no-stream-sharing"),
 		}
 
 		if conf.AdvertisedPort == 0 {
 			conf.AdvertisedPort = conf.HostConfig.Port
+		}
+
+		// gin's debug mode lists the routes at startup, and the stream
+		// routes hold the proxy's user and password.
+		if os.Getenv(gin.EnvGinMode) == "" {
+			gin.SetMode(gin.ReleaseMode)
 		}
 
 		server, err := server.NewServer(conf)
@@ -135,6 +143,7 @@ func init() {
 	rootCmd.Flags().Int("m3u-cache-expiration", 1, "M3U cache expiration in hour")
 	rootCmd.Flags().BoolP("xtream-api-get", "", false, "Generate get.php from xtream API instead of get.php original endpoint")
 	rootCmd.Flags().String("user-agent", "", "User-Agent sent to the provider instead of the client's (some providers only answer known players)")
+	rootCmd.Flags().Bool("no-stream-sharing", false, "Open one provider connection per client for a live stream, instead of sharing one between the clients watching it")
 
 	if e := viper.BindPFlags(rootCmd.Flags()); e != nil {
 		log.Fatal("error binding PFlags to viper")

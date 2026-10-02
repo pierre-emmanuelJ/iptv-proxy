@@ -40,8 +40,10 @@ type provider struct {
 	// cdn is a second host the provider redirects HLS streams to.
 	cdn *httptest.Server
 
-	mu         sync.Mutex
-	hits       map[string]int
+	mu   sync.Mutex
+	hits map[string]int
+	// left counts, per path, the endless streams whose client went away.
+	left       map[string]int
 	userAgents []string
 	queries    map[string]string
 	// guideDelay is how long the provider takes to start sending its guide.
@@ -64,6 +66,34 @@ func (p *provider) count(path string) int {
 	return p.hits[path]
 }
 
+func (p *provider) leftCount(path string) int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.left[path]
+}
+
+// endless is a stream with no end and no length: it sends "tick" until its
+// client goes away.
+func (p *provider) endless(w http.ResponseWriter, r *http.Request) {
+	p.hit(r)
+	defer func() {
+		p.mu.Lock()
+		p.left[r.URL.Path]++
+		p.mu.Unlock()
+	}()
+	for {
+		if _, err := w.Write([]byte("tick")); err != nil {
+			return
+		}
+		w.(http.Flusher).Flush()
+		select {
+		case <-r.Context().Done():
+			return
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
 func (p *provider) query(path string) string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -81,7 +111,7 @@ func (p *provider) lastUserAgent() string {
 
 func newProvider(t *testing.T) *provider {
 	t.Helper()
-	p := &provider{hits: map[string]int{}, queries: map[string]string{}, streamClosed: make(chan struct{})}
+	p := &provider{left: map[string]int{}, hits: map[string]int{}, queries: map[string]string{}, streamClosed: make(chan struct{})}
 
 	cdn := http.NewServeMux()
 	cdn.HandleFunc("/hlsr/tok/xuser/xpass/2/hash/2.m3u8", func(w http.ResponseWriter, r *http.Request) {
@@ -275,6 +305,20 @@ func newProvider(t *testing.T) *provider {
 	mux.HandleFunc("/live/xuser/xpass/4.m3u8", func(w http.ResponseWriter, r *http.Request) {
 		p.hit(r)
 		http.Redirect(w, r, p.cdn.URL+"/session/abc/index", http.StatusFound)
+	})
+	for _, path := range []string{"/live/xuser/xpass/8.ts", "/movie/xuser/xpass/endless.mkv", "/stream/endless", "/stream/endless.mp4"} {
+		mux.HandleFunc(path, p.endless)
+	}
+	// A file being read: endless for the test's purpose, but with a length.
+	mux.HandleFunc("/live/xuser/xpass/sized.ts", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "1073741824")
+		p.endless(w, r)
+	})
+	// A stream the provider drops after a few bytes, every time.
+	mux.HandleFunc("/live/xuser/xpass/dropped.ts", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		w.(http.Flusher).Flush() // no length: a live stream
+		fmt.Fprintf(w, "[part %d]", p.count(r.URL.Path))
 	})
 	// A live stream that never ends.
 	mux.HandleFunc("/live/xuser/xpass/9.ts", func(w http.ResponseWriter, r *http.Request) {
@@ -819,6 +863,146 @@ func TestProviderIsLeftWhenTheClientLeaves(t *testing.T) {
 	case <-p.streamClosed:
 	case <-time.After(5 * time.Second):
 		t.Fatal("the provider's stream was still open 5s after the client left")
+	}
+}
+
+// watch opens a stream through the proxy and reads its first bytes. The
+// returned function leaves it.
+func watch(t *testing.T, rawURL string, header ...string) func() {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	for i := 0; i+1 < len(header); i += 2 {
+		req.Header.Set(header[i], header[i+1])
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	buf := make([]byte, 4)
+	if _, err := io.ReadFull(resp.Body, buf); err != nil || string(buf) != "tick" {
+		cancel()
+		t.Fatalf("%s: first bytes %q, %v", rawURL, buf, err)
+	}
+	// keep reading, as a player does
+	go func() { _, _ = io.Copy(io.Discard, resp.Body) }()
+	return func() {
+		cancel()
+		_ = resp.Body.Close()
+	}
+}
+
+func eventually(t *testing.T, what string, ok func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !ok() {
+		if time.Now().After(deadline) {
+			t.Fatalf("still not true after 5s: %s", what)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// An account allows a few connections, often one: every device on the same
+// channel shares a single connection to the provider.
+func TestLiveStreamIsSharedBetweenItsClients(t *testing.T) {
+	const stream = "/live/xuser/xpass/8.ts"
+	p := newProvider(t)
+	base := proxy(t, p, nil)
+
+	leaveFirst := watch(t, base+"/live/me/secret/8.ts")
+	leaveSecond := watch(t, base+"/live/me/secret/8.ts", "Range", "bytes=0-")
+	leaveThird := watch(t, base+"/live/me/secret/8.ts")
+	if n := p.count(stream); n != 1 {
+		t.Fatalf("three clients on a channel took %d connections at the provider", n)
+	}
+
+	leaveFirst()
+	leaveSecond()
+	time.Sleep(50 * time.Millisecond)
+	if n := p.leftCount(stream); n != 0 {
+		t.Fatal("the provider's stream was closed while a client was watching")
+	}
+
+	leaveThird()
+	eventually(t, "the provider's stream is closed with the last client", func() bool { return p.leftCount(stream) == 1 })
+
+	// another channel, later the same one: each a connection of its own
+	leave := watch(t, base+"/live/me/secret/8.ts")
+	defer leave()
+	if n := p.count(stream); n != 2 {
+		t.Errorf("connections = %d, want a new one for a new viewing", n)
+	}
+}
+
+func TestWhatIsNotLiveIsNotShared(t *testing.T) {
+	p := newProvider(t)
+
+	for name, c := range map[string]struct {
+		path     string
+		provider string
+		header   []string
+		mutate   func(*config.ProxyConfig)
+	}{
+		"a stream with a length": {path: "/live/me/secret/sized.ts", provider: "/live/xuser/xpass/sized.ts"},
+		"a movie":                {path: "/movie/me/secret/endless.mkv", provider: "/movie/xuser/xpass/endless.mkv"},
+		"a part of a stream":     {path: "/live/me/secret/8.ts", provider: "/live/xuser/xpass/8.ts", header: []string{"Range", "bytes=100-"}},
+		"sharing switched off":   {path: "/live/me/secret/8.ts", provider: "/live/xuser/xpass/8.ts", mutate: func(c *config.ProxyConfig) { c.NoStreamSharing = true }},
+	} {
+		base := proxy(t, p, c.mutate)
+		before := p.count(c.provider)
+		leaveFirst := watch(t, base+c.path, c.header...)
+		leaveSecond := watch(t, base+c.path, c.header...)
+		if n := p.count(c.provider) - before; n != 2 {
+			t.Errorf("%s: %d connections for two clients, want one each", name, n)
+		}
+		leaveFirst()
+		leaveSecond()
+		eventually(t, name+": both connections closed", func() bool { return p.leftCount(c.provider) == p.count(c.provider) })
+	}
+}
+
+// The provider drops the stream: the proxy opens it again, the player keeps
+// its connection.
+func TestLiveStreamIsOpenedAgainWhenTheProviderDropsIt(t *testing.T) {
+	retries := streamRetries
+	streamRetries = []time.Duration{0, time.Millisecond, time.Millisecond}
+	t.Cleanup(func() { streamRetries = retries })
+
+	p := newProvider(t)
+	base := proxy(t, p, nil)
+
+	resp, body := get(t, base+"/live/me/secret/dropped.ts")
+	// the first connection and every retry, then the provider is given up
+	want := "[part 1][part 2][part 3][part 4]"
+	if resp.StatusCode != http.StatusOK || body != want {
+		t.Errorf("status %d, the client got %q, want %q", resp.StatusCode, body, want)
+	}
+	if n := p.count("/live/xuser/xpass/dropped.ts"); n != 4 {
+		t.Errorf("the provider was asked %d times, want 4", n)
+	}
+}
+
+func TestM3UTracksAreSharedUnlessTheyAreFiles(t *testing.T) {
+	p := newProvider(t)
+	file := t.TempDir() + "/list.m3u"
+	list := "#EXTM3U\n#EXTINF:-1,Live\n" + p.URL + "/stream/endless\n#EXTINF:-1,Film\n" + p.URL + "/stream/endless.mp4\n"
+	if err := os.WriteFile(file, []byte(list), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	base := m3uProxy(t, p, func(c *config.ProxyConfig) { c.RemoteURL, _ = url.Parse(file) })
+
+	for track, want := range map[string]int{"/tracks/me/secret/0/endless": 1, "/tracks/me/secret/1/endless.mp4": 2} {
+		leaveFirst := watch(t, base+track)
+		leaveSecond := watch(t, base+track)
+		provider := "/stream/" + track[strings.LastIndex(track, "/")+1:]
+		if n := p.count(provider); n != want {
+			t.Errorf("%s: %d connections for two clients, want %d", track, n, want)
+		}
+		leaveFirst()
+		leaveSecond()
+		eventually(t, track+": connections closed", func() bool { return p.leftCount(provider) == want })
 	}
 }
 

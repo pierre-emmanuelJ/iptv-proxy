@@ -264,7 +264,10 @@ func (c *Config) xtreamXMLTV(ctx *gin.Context) {
 	c.passOn(ctx, resp)
 }
 
-func (c *Config) xtreamProviderStream(ctx *gin.Context, prefix, rest string) {
+// xtreamProviderStream serves "<prefix><user>/<password>/<rest>" of the
+// provider. Live television is shared between its clients; a movie or an
+// episode is a file each client reads on its own.
+func (c *Config) xtreamProviderStream(ctx *gin.Context, prefix, rest string, live bool) {
 	rpURL, err := url.Parse(c.providerAccount().StreamURL(prefix, rest))
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, errors.New("invalid stream address")) // nolint: errcheck
@@ -272,23 +275,27 @@ func (c *Config) xtreamProviderStream(ctx *gin.Context, prefix, rest string) {
 	}
 	rpURL.RawQuery = ctx.Request.URL.RawQuery
 
+	if live {
+		c.streamLive(ctx, rpURL)
+		return
+	}
 	c.stream(ctx, rpURL)
 }
 
 func (c *Config) xtreamStreamHandler(ctx *gin.Context) {
-	c.xtreamProviderStream(ctx, "", url.PathEscape(ctx.Param("id")))
+	c.xtreamProviderStream(ctx, "", url.PathEscape(ctx.Param("id")), true)
 }
 
 func (c *Config) xtreamStreamLive(ctx *gin.Context) {
-	c.xtreamProviderStream(ctx, "live/", url.PathEscape(ctx.Param("id")))
+	c.xtreamProviderStream(ctx, "live/", url.PathEscape(ctx.Param("id")), true)
 }
 
 func (c *Config) xtreamStreamMovie(ctx *gin.Context) {
-	c.xtreamProviderStream(ctx, "movie/", url.PathEscape(ctx.Param("id")))
+	c.xtreamProviderStream(ctx, "movie/", url.PathEscape(ctx.Param("id")), false)
 }
 
 func (c *Config) xtreamStreamSeries(ctx *gin.Context) {
-	c.xtreamProviderStream(ctx, "series/", url.PathEscape(ctx.Param("id")))
+	c.xtreamProviderStream(ctx, "series/", url.PathEscape(ctx.Param("id")), false)
 }
 
 func (c *Config) xtreamStreamTimeshift(ctx *gin.Context) {

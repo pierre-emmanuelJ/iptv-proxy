@@ -59,4 +59,7 @@ type ProxyConfig struct {
 	// UserAgent, when set, replaces the client's on every request to the
 	// provider.
 	UserAgent string
+	// NoStreamSharing gives every client its own connection to the provider
+	// for a live stream, instead of one connection per stream.
+	NoStreamSharing bool
 }
