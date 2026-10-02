@@ -186,6 +186,11 @@ func newProvider(t *testing.T) *provider {
 			fmt.Fprint(w, `[{"num":1,"name":"One","stream_type":"live","stream_id":1,"stream_icon":"http:\/\/logos.example\/one.png","epg_channel_id":"one.fr","added":"1700000000","category_id":10,"tv_archive":0,"direct_source":""},`+
 				`{"num":"2","name":"Two","stream_id":"2","stream_icon":"","epg_channel_id":null,"category_id":"20"},`+
 				`{"num":3,"name":"Lost","stream_id":3,"category_id":"99"}]`)
+		case "get_vod_categories":
+			fmt.Fprint(w, `[{"category_id":"30","category_name":"Films"}]`)
+		case "get_vod_streams":
+			fmt.Fprint(w, `[{"num":1,"name":"A film","stream_type":"movie","stream_id":12,"stream_icon":"http:\/\/img.example\/film.jpg","category_id":"30","container_extension":"mkv"},`+
+				`{"name":"No format","stream_id":"13","category_id":30}]`)
 		case "get_vod_info":
 			// a number where others send a string, an object where others
 			// send an array, and the provider's credentials in an address
@@ -707,6 +712,55 @@ func TestPlaylistFromTheAPI(t *testing.T) {
 	_, short := get(t, base+"/apiget?"+creds)
 	if !strings.Contains(short, "\nhttp://proxy.example:8080/me/secret/1\n") {
 		t.Errorf("without an output format, the short stream form is expected:\n%s", short)
+	}
+}
+
+// Movies are added on request only: a large catalogue makes a playlist some
+// players cannot load.
+func TestPlaylistFromTheAPIWithMovies(t *testing.T) {
+	p := newProvider(t)
+
+	base := proxy(t, p, nil)
+	if _, body := get(t, base+"/apiget?"+creds+"&output=ts"); strings.Contains(body, "/movie/") {
+		t.Errorf("movies in the playlist without being asked:\n%s", body)
+	}
+
+	base = proxy(t, p, func(c *config.ProxyConfig) { c.XtreamApiGetMovies = true })
+	_, body := get(t, base+"/apiget?"+creds+"&output=ts")
+	want := "#EXTM3U\n" +
+		"#EXTINF:-1 tvg-id=\"one.fr\" tvg-name=\"One\" tvg-logo=\"http://logos.example/one.png\" group-title=\"News\",One\nhttp://proxy.example:8080/live/me/secret/1.ts\n" +
+		"#EXTINF:-1 tvg-name=\"Two\" group-title=\"Sport 'HD'\",Two\nhttp://proxy.example:8080/live/me/secret/2.ts\n" +
+		"#EXTINF:-1 tvg-name=\"Lost\",Lost\nhttp://proxy.example:8080/live/me/secret/3.ts\n" +
+		// a movie keeps its own format, whatever the one asked for live
+		"#EXTINF:-1 tvg-name=\"A film\" tvg-logo=\"http://img.example/film.jpg\" group-title=\"Films\",A film\nhttp://proxy.example:8080/movie/me/secret/12.mkv\n" +
+		"#EXTINF:-1 tvg-name=\"No format\" group-title=\"Films\",No format\nhttp://proxy.example:8080/movie/me/secret/13.mp4\n"
+	if body != want {
+		t.Errorf("playlist:\n%s\nwant:\n%s", body, want)
+	}
+
+	// and the address it gives plays
+	if resp, film := get(t, base+"/movie/me/secret/12.mkv"); resp.StatusCode != http.StatusPartialContent || film != "film" {
+		t.Errorf("movie: status %d, body %q", resp.StatusCode, film)
+	}
+}
+
+// With an Xtream account and no playlist of its own, the playlist's usual
+// name serves the account's playlist rather than an empty one.
+func TestXtreamAccountAloneServesItsPlaylistUnderTheUsualName(t *testing.T) {
+	p := newProvider(t)
+
+	base := proxy(t, p, nil)
+	resp, body := get(t, base+"/iptv.m3u?"+creds+"&type=m3u_plus&output=ts")
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body, "http://proxy.example:8080/live/me/secret/1.ts") || !strings.Contains(body, "A film, with a comma") {
+		t.Errorf("status %d, playlist (want the provider's get.php):\n%s", resp.StatusCode, body)
+	}
+	if resp, _ := get(t, base+"/iptv.m3u?username=me&password=nope"); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("wrong password: status = %d", resp.StatusCode)
+	}
+
+	base = proxy(t, p, func(c *config.ProxyConfig) { c.XtreamGenerateApiGet = true })
+	if _, body := get(t, base+"/iptv.m3u?"+creds+"&output=ts"); !strings.Contains(body, `tvg-id="one.fr"`) || strings.Contains(body, "A film, with a comma") {
+		t.Errorf("with the generated playlist asked for, want it under the usual name too:\n%s", body)
 	}
 }
 

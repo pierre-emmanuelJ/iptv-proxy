@@ -70,7 +70,7 @@ var rootCmd = &cobra.Command{
 
 		conf := &config.ProxyConfig{
 			HostConfig: &config.HostConfiguration{
-				Hostname: viper.GetString("hostname"),
+				Hostname: setting(cmd, "hostname"),
 				Port:     viper.GetInt("port"),
 			},
 			RemoteURL:            remoteHostURL,
@@ -78,14 +78,15 @@ var rootCmd = &cobra.Command{
 			XtreamPassword:       config.CredentialString(xtreamPassword),
 			XtreamBaseURL:        xtreamBaseURL,
 			M3UCacheExpiration:   viper.GetInt("m3u-cache-expiration"),
-			User:                 config.CredentialString(viper.GetString("user")),
-			Password:             config.CredentialString(viper.GetString("password")),
+			User:                 config.CredentialString(setting(cmd, "user")),
+			Password:             config.CredentialString(setting(cmd, "password")),
 			AdvertisedPort:       viper.GetInt("advertised-port"),
 			HTTPS:                viper.GetBool("https"),
 			M3UFileName:          viper.GetString("m3u-file-name"),
 			CustomEndpoint:       viper.GetString("custom-endpoint"),
 			CustomId:             viper.GetString("custom-id"),
 			XtreamGenerateApiGet: viper.GetBool("xtream-api-get"),
+			XtreamApiGetMovies:   viper.GetBool("xtream-api-get-movies"),
 			UserAgent:            viper.GetString("user-agent"),
 			NoStreamSharing:      viper.GetBool("no-stream-sharing"),
 		}
@@ -111,6 +112,20 @@ var rootCmd = &cobra.Command{
 	},
 }
 
+// setting reads one of the options whose environment variable is also an
+// ordinary system variable: a shell sets USER to the login name, Docker sets
+// HOSTNAME to the container's id. PROXY_USER, PROXY_PASSWORD and
+// PROXY_HOSTNAME say what is meant: they win over the old names, which keep
+// working, and only a flag given on the command line wins over them.
+func setting(cmd *cobra.Command, option string) string {
+	if !cmd.Flags().Changed(option) {
+		if value := os.Getenv("PROXY_" + strings.ToUpper(option)); value != "" {
+			return value
+		}
+	}
+	return viper.GetString(option)
+}
+
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
@@ -126,7 +141,7 @@ func init() {
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "iptv-proxy-config", "C", "Config file (default is $HOME/.iptv-proxy.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "iptv-proxy-config", "", "Config file (default is .iptv-proxy.yaml in the home or current directory)")
 	rootCmd.Flags().StringP("m3u-url", "u", "", `Iptv m3u file or url e.g: "http://example.com/iptv.m3u"`)
 	rootCmd.Flags().StringP("m3u-file-name", "", "iptv.m3u", `Name of the new proxified m3u file e.g "http://poxy.com/iptv.m3u"`)
 	rootCmd.Flags().StringP("custom-endpoint", "", "", `Custom endpoint "http://poxy.com/<custom-endpoint>/iptv.m3u"`)
@@ -142,6 +157,7 @@ func init() {
 	rootCmd.Flags().String("xtream-base-url", "", "Xtream-code base url e.g(http://expample.tv:8080)")
 	rootCmd.Flags().Int("m3u-cache-expiration", 1, "M3U cache expiration in hour")
 	rootCmd.Flags().BoolP("xtream-api-get", "", false, "Generate get.php from xtream API instead of get.php original endpoint")
+	rootCmd.Flags().Bool("xtream-api-get-movies", false, "Add the provider's movies to the playlist generated from the xtream API (large catalogues make a playlist some players cannot load)")
 	rootCmd.Flags().String("user-agent", "", "User-Agent sent to the provider instead of the client's (some providers only answer known players)")
 	rootCmd.Flags().Bool("no-stream-sharing", false, "Open one provider connection per client for a live stream, instead of sharing one between the clients watching it")
 

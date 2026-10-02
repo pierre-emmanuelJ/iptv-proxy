@@ -1,5 +1,28 @@
 # Changelog
 
+## 3.11.0
+
+### Added
+
+- `--xtream-api-get-movies` (`XTREAM_API_GET_MOVIES`): adds the provider's
+  movies to the playlist generated from its API, each with its own file
+  format. Off by default, as a catalogue of tens of thousands of movies makes
+  a playlist some players cannot load. Series are not added: the API lists
+  the episodes of one series at a time. (from #182, thanks @bromeroarbelaez)
+- `PROXY_USER`, `PROXY_PASSWORD` and `PROXY_HOSTNAME`: environment variables
+  that cannot be mistaken for the system's. `USER` is set by shells to the
+  login name and `HOSTNAME` by Docker to the container's id, which the proxy
+  then took as its own settings. The old names keep working; the new ones
+  win when both are set.
+
+### Fixed
+
+- With the Xtream options alone (no `--m3u-url`), `/iptv.m3u` was an empty
+  playlist. It is now the account's playlist, as `/get.php`.
+- The configuration file `.iptv-proxy.yaml` is looked for in the home and
+  current directories when `--iptv-proxy-config` is not given, as its help
+  said. The option's default was a literal `C`, so the file was never read.
+
 ## 3.10.0
 
 ### Added

@@ -89,15 +89,6 @@ func (c *Config) providerList(ctx *gin.Context, action string) ([]map[string]any
 // xtreamGenerateM3u builds the live playlist from the provider's API, for
 // providers whose get.php is disabled.
 func (c *Config) xtreamGenerateM3u(ctx *gin.Context, extension string) (*m3u.Playlist, error) {
-	categories, err := c.providerList(ctx, "get_live_categories")
-	if err != nil {
-		return nil, err
-	}
-	streams, err := c.providerList(ctx, "get_live_streams")
-	if err != nil {
-		return nil, err
-	}
-
 	// this is specific to xtream API,
 	// prefix with "live" if there is an extension.
 	var prefix string
@@ -106,26 +97,73 @@ func (c *Config) xtreamGenerateM3u(ctx *gin.Context, extension string) (*m3u.Pla
 		prefix = "live/"
 	}
 
-	byCategory := map[string][]map[string]any{}
-	for _, stream := range streams {
-		id := xtream.Text(stream["category_id"])
-		byCategory[id] = append(byCategory[id], stream)
+	playlist := &m3u.Playlist{}
+	err := c.appendCatalogue(ctx, playlist, "get_live_categories", "get_live_streams", func(stream map[string]any, group string) m3u.Track {
+		name := xtream.Text(stream["name"])
+		return m3u.Track{
+			ExtInf: m3u.ExtInfLine(
+				name,
+				[2]string{"tvg-id", xtream.Text(stream["epg_channel_id"])},
+				[2]string{"tvg-name", name},
+				[2]string{"tvg-logo", xtream.Text(stream["stream_icon"])},
+				[2]string{"group-title", group},
+			),
+			URI: c.providerAccount().StreamURL(prefix, xtream.Text(stream["stream_id"])+extension),
+		}
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	playlist := &m3u.Playlist{}
-	add := func(group string, streams []map[string]any) {
-		for _, stream := range streams {
-			name := xtream.Text(stream["name"])
-			playlist.Tracks = append(playlist.Tracks, m3u.Track{
+	if c.XtreamApiGetMovies {
+		err := c.appendCatalogue(ctx, playlist, "get_vod_categories", "get_vod_streams", func(movie map[string]any, group string) m3u.Track {
+			name := xtream.Text(movie["name"])
+			// A movie is a file: it keeps its own format, whatever format
+			// the live streams are asked in.
+			format := xtream.Text(movie["container_extension"])
+			if format == "" {
+				format = "mp4"
+			}
+			return m3u.Track{
 				ExtInf: m3u.ExtInfLine(
 					name,
-					[2]string{"tvg-id", xtream.Text(stream["epg_channel_id"])},
 					[2]string{"tvg-name", name},
-					[2]string{"tvg-logo", xtream.Text(stream["stream_icon"])},
+					[2]string{"tvg-logo", xtream.Text(movie["stream_icon"])},
 					[2]string{"group-title", group},
 				),
-				URI: c.providerAccount().StreamURL(prefix, xtream.Text(stream["stream_id"])+extension),
-			})
+				URI: c.providerAccount().StreamURL("movie/", xtream.Text(movie["stream_id"])+"."+format),
+			}
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return playlist, nil
+}
+
+// appendCatalogue adds to a playlist the entries of one of the provider's
+// catalogues (live streams, movies), grouped by category in the provider's
+// order.
+func (c *Config) appendCatalogue(ctx *gin.Context, playlist *m3u.Playlist, categoriesAction, entriesAction string, track func(entry map[string]any, group string) m3u.Track) error {
+	categories, err := c.providerList(ctx, categoriesAction)
+	if err != nil {
+		return err
+	}
+	entries, err := c.providerList(ctx, entriesAction)
+	if err != nil {
+		return err
+	}
+
+	byCategory := map[string][]map[string]any{}
+	for _, entry := range entries {
+		id := xtream.Text(entry["category_id"])
+		byCategory[id] = append(byCategory[id], entry)
+	}
+
+	add := func(group string, entries []map[string]any) {
+		for _, entry := range entries {
+			playlist.Tracks = append(playlist.Tracks, track(entry, group))
 		}
 	}
 	for _, category := range categories {
@@ -133,16 +171,16 @@ func (c *Config) xtreamGenerateM3u(ctx *gin.Context, extension string) (*m3u.Pla
 		add(xtream.Text(category["category_name"]), byCategory[id])
 		delete(byCategory, id)
 	}
-	// Streams of a category the provider does not list are not lost.
-	for _, stream := range streams {
-		id := xtream.Text(stream["category_id"])
+	// Entries of a category the provider does not list are not lost.
+	for _, entry := range entries {
+		id := xtream.Text(entry["category_id"])
 		if rest, ok := byCategory[id]; ok {
 			add("", rest)
 			delete(byCategory, id)
 		}
 	}
 
-	return playlist, nil
+	return nil
 }
 
 // xtreamGetAuto serves the playlist the proxy was started with: the

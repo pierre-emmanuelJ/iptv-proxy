@@ -48,14 +48,18 @@ type ProxyConfig struct {
 	XtreamPassword       CredentialString
 	XtreamBaseURL        string
 	XtreamGenerateApiGet bool
-	M3UCacheExpiration   int
-	M3UFileName          string
-	CustomEndpoint       string
-	CustomId             string
-	RemoteURL            *url.URL
-	AdvertisedPort       int
-	HTTPS                bool
-	User, Password       CredentialString
+	// XtreamApiGetMovies adds the provider's movies to the playlist generated
+	// from its API. Off by default: a catalogue of tens of thousands of
+	// movies makes a playlist some players cannot load.
+	XtreamApiGetMovies bool
+	M3UCacheExpiration int
+	M3UFileName        string
+	CustomEndpoint     string
+	CustomId           string
+	RemoteURL          *url.URL
+	AdvertisedPort     int
+	HTTPS              bool
+	User, Password     CredentialString
 	// UserAgent, when set, replaces the client's on every request to the
 	// provider.
 	UserAgent string
