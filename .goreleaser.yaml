@@ -1,3 +1,5 @@
+version: 2
+
 project_name: iptv-proxy
 
 builds:
@@ -5,8 +7,7 @@ builds:
     env:
       - CGO_ENABLED=0
     flags:
-      - -mod=vendor
-      - -a
+      - -trimpath
     goos:
       - windows
       - darwin
@@ -20,7 +21,7 @@ archives:
   -
    format_overrides:
      - goos: windows
-       format: zip
+       formats: [zip]
 
 release:
   github:
@@ -34,17 +35,17 @@ nfpms:
    homepage: https://github.com/pierre-emmanuelJ/iptv-proxy
    maintainer: Pierre-Emmanuel <pierre-emmanuel.jacquier@epitech.eu>
    description: Reverse proxy on iptv m3u file
-   license: Apache 2.0
+   license: GPL-3.0
    formats:
      - deb
      - rpm
 
 dockers:
   - image_templates:
-    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:{{ .Tag }}-arm64"
-    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:v{{ .Major }}-arm64"
-    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:v{{ .Major }}.{{ .Minor }}-arm64"
-    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:latest-arm64"
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:{{ .Tag }}-arm64"
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}-arm64"
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}.{{ .Minor }}-arm64"
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:latest-arm64"
     - "pierro777/iptv-proxy:{{ .Tag }}-arm64"
     - "pierro777/iptv-proxy:v{{ .Major }}-arm64"
     - "pierro777/iptv-proxy:v{{ .Major }}.{{ .Minor }}-arm64"
@@ -64,14 +65,14 @@ dockers:
     dockerfile: .Dockerfile.goreleaser
 
   - image_templates:
-    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:{{ .Tag }}-amd64"
-    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:v{{ .Major }}-amd64"
-    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:v{{ .Major }}.{{ .Minor }}-amd64"
-    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:latest-amd64"
-    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:{{ .Tag }}"
-    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:v{{ .Major }}"
-    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:v{{ .Major }}.{{ .Minor }}"
-    - "docker.pkg.github.com/pierre-emmanuelj/iptv-proxy/iptv-proxy:latest"
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:{{ .Tag }}-amd64"
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}-amd64"
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}.{{ .Minor }}-amd64"
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:latest-amd64"
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:{{ .Tag }}"
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}"
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}.{{ .Minor }}"
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:latest"
     - "pierro777/iptv-proxy:{{ .Tag }}-amd64"
     - "pierro777/iptv-proxy:v{{ .Major }}-amd64"
     - "pierro777/iptv-proxy:v{{ .Major }}.{{ .Minor }}-amd64"

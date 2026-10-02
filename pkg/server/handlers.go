@@ -19,83 +19,115 @@
 package server
 
 import (
-	"bytes"
+	"crypto/subtle"
+	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
+// maxFormBytes bounds the body of the form requests the proxy reads
+// (credentials and API parameters).
+const maxFormBytes = 1 << 20
+
 func (c *Config) getM3U(ctx *gin.Context) {
+	c.serveM3U(ctx, c.proxyfiedM3U)
+}
+
+func (c *Config) serveM3U(ctx *gin.Context, playlist []byte) {
 	ctx.Header("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, c.M3UFileName))
-	ctx.Header("Content-Type", "application/octet-stream")
-
-	ctx.File(c.proxyfiedM3UPath)
+	ctx.Data(http.StatusOK, "application/octet-stream", playlist)
 }
 
-func (c *Config) reverseProxy(ctx *gin.Context) {
-	rpURL, err := url.Parse(c.track.URI)
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-		return
+func (c *Config) reverseProxy(track *url.URL) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		c.stream(ctx, track)
 	}
-
-	c.stream(ctx, rpURL)
 }
 
-func (c *Config) m3u8ReverseProxy(ctx *gin.Context) {
-	id := ctx.Param("id")
+// m3u8ReverseProxy serves an HLS playlist and what sits next to it at the
+// provider (its segments).
+func (c *Config) m3u8ReverseProxy(track *url.URL) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		target := *track
+		target.Path = path.Join(path.Dir(track.Path), ctx.Param("id"))
+		target.RawPath = ""
+		if q := ctx.Request.URL.RawQuery; q != "" {
+			target.RawQuery = q
+		}
 
-	rpURL, err := url.Parse(strings.ReplaceAll(c.track.URI, path.Base(c.track.URI), id))
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-		return
+		c.stream(ctx, &target)
 	}
-
-	c.stream(ctx, rpURL)
 }
 
+// stream passes a provider resource on to the client, for as long as the
+// client stays.
 func (c *Config) stream(ctx *gin.Context, oriURL *url.URL) {
-	client := &http.Client{}
-
-	req, err := http.NewRequest("GET", oriURL.String(), nil)
+	resp, err := c.upstream(ctx, c.client, oriURL.String(), true)
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		c.upstreamError(ctx, err)
 		return
 	}
+	defer resp.Body.Close() // nolint: errcheck
 
-	mergeHttpHeader(req.Header, ctx.Request.Header)
+	c.passOn(ctx, resp)
+}
+
+// passOn copies a provider response to the client.
+func (c *Config) passOn(ctx *gin.Context, resp *http.Response) {
+	mergeHttpHeader(ctx.Writer.Header(), resp.Header)
+	ctx.Status(resp.StatusCode)
+	ctx.Writer.WriteHeaderNow()
+	// The copy ends when the provider or the client stops: neither is an
+	// error worth reporting.
+	_, _ = io.Copy(flushWriter{ctx.Writer}, resp.Body)
+}
+
+// flushWriter sends each chunk as it comes: a live stream is not held back
+// in the server's buffer.
+type flushWriter struct {
+	gin.ResponseWriter
+}
+
+func (w flushWriter) Write(p []byte) (int, error) {
+	n, err := w.ResponseWriter.Write(p)
+	w.Flush()
+	return n, err
+}
+
+// upstream sends a GET to the provider on behalf of the client: it is
+// cancelled when the client leaves. With forwardHeaders the client's headers
+// go along (Range, for seeking in a movie); otherwise only a User-Agent.
+func (c *Config) upstream(ctx *gin.Context, client *http.Client, rawURL string, forwardHeaders bool) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx.Request.Context(), http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, errors.New("invalid provider address")
+	}
+
+	if forwardHeaders {
+		mergeHttpHeader(req.Header, ctx.Request.Header)
+	}
+	req.Header.Set("User-Agent", c.upstreamUserAgent(ctx.Request.UserAgent()))
 
 	resp, err := client.Do(req)
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-		return
+		return nil, withoutURL(err)
 	}
-	defer resp.Body.Close()
-
-	mergeHttpHeader(ctx.Writer.Header(), resp.Header)
-	ctx.Status(resp.StatusCode)
-	ctx.Stream(func(w io.Writer) bool {
-		io.Copy(w, resp.Body) // nolint: errcheck
-		return false
-	})
+	return resp, nil
 }
 
-func (c *Config) xtreamStream(ctx *gin.Context, oriURL *url.URL) {
-	id := ctx.Param("id")
-	if strings.HasSuffix(id, ".m3u8") {
-		c.hlsXtreamStream(ctx, oriURL)
+// upstreamError answers for a provider that could not be reached.
+func (c *Config) upstreamError(ctx *gin.Context, err error) {
+	if ctx.Request.Context().Err() != nil {
+		ctx.Abort() // the client left: nobody to answer
 		return
 	}
-
-	c.stream(ctx, oriURL)
+	ctx.AbortWithError(http.StatusBadGateway, err) // nolint: errcheck
 }
 
 type values []string
@@ -110,8 +142,33 @@ func (vs values) contains(s string) bool {
 	return false
 }
 
+// hopByHop headers describe one connection, not the resource: they are not
+// passed from one side of the proxy to the other.
+var hopByHop = map[string]bool{
+	"Connection":          true,
+	"Keep-Alive":          true,
+	"Proxy-Authenticate":  true,
+	"Proxy-Authorization": true,
+	"Proxy-Connection":    true,
+	"Te":                  true,
+	"Trailer":             true,
+	"Transfer-Encoding":   true,
+	"Upgrade":             true,
+}
+
 func mergeHttpHeader(dst, src http.Header) {
+	// Headers named by "Connection" are hop-by-hop too.
+	named := map[string]bool{}
+	for _, v := range src.Values("Connection") {
+		for _, name := range strings.Split(v, ",") {
+			named[http.CanonicalHeaderKey(strings.TrimSpace(name))] = true
+		}
+	}
+
 	for k, vv := range src {
+		if key := http.CanonicalHeaderKey(k); hopByHop[key] || named[key] {
+			continue
+		}
 		for _, v := range vv {
 			if values(dst.Values(k)).contains(v) {
 				continue
@@ -121,43 +178,24 @@ func mergeHttpHeader(dst, src http.Header) {
 	}
 }
 
-// authRequest handle auth credentials
-type authRequest struct {
-	Username string `form:"username" binding:"required"`
-	Password string `form:"password" binding:"required"`
-}
-
+// authenticate checks the "username" and "password" of a request, given in
+// its query or in its form body.
 func (c *Config) authenticate(ctx *gin.Context) {
-	var authReq authRequest
-	if err := ctx.Bind(&authReq); err != nil {
+	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, maxFormBytes)
+	if err := ctx.Request.ParseMultipartForm(maxFormBytes); err != nil && !errors.Is(err, http.ErrNotMultipart) {
 		ctx.AbortWithError(http.StatusBadRequest, err) // nolint: errcheck
 		return
 	}
-	if c.ProxyConfig.User.String() != authReq.Username || c.ProxyConfig.Password.String() != authReq.Password {
+
+	username, password := ctx.Request.Form.Get("username"), ctx.Request.Form.Get("password")
+	if username == "" || password == "" {
+		ctx.AbortWithError(http.StatusBadRequest, errors.New("missing username or password")) // nolint: errcheck
+		return
+	}
+
+	userOK := subtle.ConstantTimeCompare([]byte(username), []byte(c.User.String())) == 1
+	passwordOK := subtle.ConstantTimeCompare([]byte(password), []byte(c.Password.String())) == 1
+	if !userOK || !passwordOK {
 		ctx.AbortWithStatus(http.StatusUnauthorized)
 	}
-}
-
-func (c *Config) appAuthenticate(ctx *gin.Context) {
-	contents, err := ioutil.ReadAll(ctx.Request.Body)
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-		return
-	}
-
-	q, err := url.ParseQuery(string(contents))
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-		return
-	}
-	if len(q["username"]) == 0 || len(q["password"]) == 0 {
-		ctx.AbortWithError(http.StatusBadRequest, fmt.Errorf("bad body url query parameters")) // nolint: errcheck
-		return
-	}
-	log.Printf("[iptv-proxy] %v | %s |App Auth\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP())
-	if c.ProxyConfig.User.String() != q["username"][0] || c.ProxyConfig.Password.String() != q["password"][0] {
-		ctx.AbortWithStatus(http.StatusUnauthorized)
-	}
-
-	ctx.Request.Body = ioutil.NopCloser(bytes.NewReader(contents))
 }

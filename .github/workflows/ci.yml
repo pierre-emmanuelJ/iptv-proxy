@@ -5,22 +5,33 @@ on:
   push:
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Run golangci-lint
-      uses: golangci/golangci-lint-action@v2
+    - uses: actions/checkout@v4
+    - uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+    - name: Formatting
+      run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+    - name: Lint
+      uses: golangci/golangci-lint-action@v8
       with:
         version: latest
-    - name: Run tests and attempt building
+    - name: Tests
+      run: go test -race -count=1 -coverprofile=coverage.out ./...
+    - name: Coverage of the packages
       run: |
-        export PATH=$(go env GOPATH)/bin:$PATH
-        go test -mod vendor -v -race ./...
-        go build -mod vendor
+        go tool cover -func=coverage.out | tail -1
+        # every package that has tests keeps at least 80% of its statements covered
+        go test -count=1 -cover ./... | awk '/^ok/ && match($0, /coverage: [0-9.]+%/) { pct = substr($0, RSTART + 10, RLENGTH - 11); if (pct + 0 < 80) { print "under 80%: " $2 " (" pct "%)"; bad = 1 } } END { exit bad }'
+    - name: Fuzz the playlist reader
+      run: go test ./pkg/m3u/ -run '^$' -fuzz FuzzParse -fuzztime 30s
+    - name: Build
+      run: go build ./...
   docker-build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Build the Docker image
       run: docker build . --file Dockerfile --tag iptv-proxy:ci-build

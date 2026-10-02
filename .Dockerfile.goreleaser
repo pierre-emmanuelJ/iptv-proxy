@@ -1,4 +1,9 @@
+# The certificates are fetched on the build machine's own architecture, so
+# that no image needs to run a command under emulation.
+FROM --platform=$BUILDPLATFORM alpine:3 AS certs
+RUN apk add --no-cache ca-certificates
+
 FROM alpine:3
-RUN apk add ca-certificates
+COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY iptv-proxy /
 ENTRYPOINT ["/iptv-proxy"]
