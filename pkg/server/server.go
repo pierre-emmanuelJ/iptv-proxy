@@ -50,9 +50,15 @@ const (
 
 	playlistFetchTimeout = 2 * time.Minute
 	connectTimeout       = 15 * time.Second
-	// A provider has this long to start answering; a stream then lasts as
-	// long as it has to.
-	responseHeaderTimeout = 30 * time.Second
+)
+
+// How long a provider has to start answering. A stream starts at once or
+// not at all; a whole playlist or guide is generated on request, which can
+// take minutes with a large catalogue. Once it answers, a response lasts as
+// long as it has to.
+var (
+	streamHeaderTimeout = 30 * time.Second
+	apiHeaderTimeout    = 5 * time.Minute
 )
 
 // Config represent the server configuration
@@ -66,9 +72,11 @@ type Config struct {
 
 	endpointAntiColision string
 
-	// client follows redirects, noRedirect hands them back.
+	// client follows redirects, noRedirect hands them back: both for
+	// streams. apiClient is for the provider's API, playlists and guide.
 	client     *http.Client
 	noRedirect *http.Client
+	apiClient  *http.Client
 
 	m3uCacheLock sync.Mutex
 	m3uCache     map[string]cachedM3U
@@ -84,16 +92,19 @@ type cachedM3U struct {
 
 // NewServer initialize a new server configuration
 func NewServer(config *config.ProxyConfig) (*Config, error) {
-	transport := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           (&net.Dialer{Timeout: connectTimeout, KeepAlive: 30 * time.Second}).DialContext,
-		TLSHandshakeTimeout:   connectTimeout,
-		ResponseHeaderTimeout: responseHeaderTimeout,
-		MaxIdleConnsPerHost:   16,
-		IdleConnTimeout:       90 * time.Second,
-		// Media is passed on as the provider sends it.
-		DisableCompression: true,
+	newTransport := func(headerTimeout time.Duration) *http.Transport {
+		return &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			DialContext:           (&net.Dialer{Timeout: connectTimeout, KeepAlive: 30 * time.Second}).DialContext,
+			TLSHandshakeTimeout:   connectTimeout,
+			ResponseHeaderTimeout: headerTimeout,
+			MaxIdleConnsPerHost:   16,
+			IdleConnTimeout:       90 * time.Second,
+			// Media is passed on as the provider sends it.
+			DisableCompression: true,
+		}
 	}
+	transport := newTransport(streamHeaderTimeout)
 
 	c := &Config{
 		ProxyConfig:          config,
@@ -106,6 +117,7 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 				return http.ErrUseLastResponse
 			},
 		},
+		apiClient:    &http.Client{Transport: newTransport(apiHeaderTimeout)},
 		m3uCache:     map[string]cachedM3U{},
 		hlsRedirects: map[string]url.URL{},
 	}
@@ -135,9 +147,50 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 // Handler is the proxy's HTTP API.
 func (c *Config) Handler() http.Handler {
 	router := gin.New()
-	router.Use(gin.Logger(), gin.Recovery(), cors.Default())
+	router.Use(gin.LoggerWithFormatter(c.accessLog), gin.Recovery(), cors.Default())
 	c.routes(router.Group("/"))
 	return router
+}
+
+// accessLog writes a request the way gin does, with the proxy's credentials
+// masked: they sit in the query of API requests and in the path of streams,
+// and logs get shared when asking for help.
+func (c *Config) accessLog(p gin.LogFormatterParams) string {
+	return fmt.Sprintf("[GIN] %s | %3d | %13v | %15s | %-7s %q\n%s",
+		p.TimeStamp.Format("2006/01/02 - 15:04:05"),
+		p.StatusCode,
+		p.Latency.Round(time.Microsecond),
+		p.ClientIP,
+		p.Method,
+		c.maskCredentials(p.Path),
+		p.ErrorMessage,
+	)
+}
+
+// maskCredentials hides the proxy's user and password in a request address.
+func (c *Config) maskCredentials(address string) string {
+	path, query, hasQuery := strings.Cut(address, "?")
+
+	segments := strings.Split(path, "/")
+	for i, segment := range segments {
+		for _, secret := range []config.CredentialString{c.User, c.Password} {
+			if secret != "" && (segment == secret.String() || segment == secret.PathEscape()) {
+				segments[i] = "***"
+			}
+		}
+	}
+	path = strings.Join(segments, "/")
+	if !hasQuery {
+		return path
+	}
+
+	params := strings.Split(query, "&")
+	for i, param := range params {
+		if name, _, hasValue := strings.Cut(param, "="); hasValue && (name == "username" || name == "password") {
+			params[i] = name + "=***"
+		}
+	}
+	return path + "?" + strings.Join(params, "&")
 }
 
 // Serve the iptv-proxy api
@@ -192,7 +245,7 @@ func (c *Config) loadPlaylist(ctx context.Context, source, userAgent string) (*m
 	}
 	req.Header.Set("User-Agent", userAgent)
 
-	resp, err := c.client.Do(req)
+	resp, err := c.apiClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get the playlist: %w", withoutURL(err))
 	}

@@ -28,6 +28,9 @@ no longer depends on how a given provider formats its answers.
   startup**: the proxy starts even when `get.php` is slow or disabled.
 - **A stream stops at the provider when the client leaves**, instead of
   holding one of the account's connections.
+- A provider gets up to five minutes to start sending a playlist or a guide
+  (large catalogues are generated on request), and thirty seconds to start a
+  stream.
 - Connection headers (`Connection`, `Keep-Alive`, `Transfer-Encoding`...) are
   no longer copied between the client and the provider.
 
@@ -36,6 +39,8 @@ no longer depends on how a given provider formats its answers.
 - The Xtream password is no longer written to the log at startup, and
   provider addresses (which hold the credentials) are kept out of error logs.
 - A provider page refusing a playlist is no longer relayed to the log.
+- The proxy's own user and password are masked in the access log (the query
+  of API requests, the path of streams): logs are safe to share in an issue.
 - Credentials are compared in constant time.
 
 ### Added

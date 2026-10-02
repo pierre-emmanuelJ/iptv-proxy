@@ -61,7 +61,7 @@ func (c *Config) cachedPlaylist(key string, build func() (*m3u.Playlist, error))
 
 // providerGet asks the provider's API and returns its whole answer.
 func (c *Config) providerGet(ctx *gin.Context, endpoint string, params url.Values) (int, http.Header, []byte, error) {
-	resp, err := c.upstream(ctx, c.client, c.providerAccount().APIURL(endpoint, params), false)
+	resp, err := c.upstream(ctx, c.apiClient, c.providerAccount().APIURL(endpoint, params), false)
 	if err != nil {
 		return 0, nil, nil, err
 	}
@@ -245,7 +245,7 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context) {
 // xtreamXMLTV passes the provider's guide on as it comes: it can weigh
 // hundreds of megabytes.
 func (c *Config) xtreamXMLTV(ctx *gin.Context) {
-	resp, err := c.upstream(ctx, c.client, c.providerAccount().APIURL("xmltv.php", ctx.Request.Form), false)
+	resp, err := c.upstream(ctx, c.apiClient, c.providerAccount().APIURL("xmltv.php", ctx.Request.Form), false)
 	if err != nil {
 		c.upstreamError(ctx, err)
 		return

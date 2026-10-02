@@ -43,6 +43,8 @@ type provider struct {
 	hits       map[string]int
 	userAgents []string
 	queries    map[string]string
+	// guideDelay is how long the provider takes to start sending its guide.
+	guideDelay time.Duration
 	// streamClosed is closed once the endless stream saw its client leave.
 	streamClosed chan struct{}
 }
@@ -153,6 +155,7 @@ func newProvider(t *testing.T) *provider {
 		if !authorized(w, r) {
 			return
 		}
+		time.Sleep(p.guideDelay) // a large guide takes a while to generate
 		w.Header().Set("Content-Type", "text/xml")
 		fmt.Fprint(w, `<?xml version="1.0"?><tv><channel id="one.fr"/></tv>`)
 	})
@@ -173,6 +176,13 @@ func newProvider(t *testing.T) *provider {
 		w.Header().Set("Content-Range", "bytes 2-5/100")
 		w.WriteHeader(http.StatusPartialContent)
 		fmt.Fprint(w, "film")
+	})
+	mux.HandleFunc("/live/xuser/xpass/slow.ts", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		select {
+		case <-time.After(400 * time.Millisecond):
+		case <-r.Context().Done():
+		}
 	})
 	mux.HandleFunc("/series/xuser/xpass/5.mp4", func(w http.ResponseWriter, r *http.Request) {
 		p.hit(r)
@@ -553,6 +563,48 @@ func TestGuideIsPassedOn(t *testing.T) {
 	}
 	if ct := resp.Header.Get("Content-Type"); ct != "text/xml" {
 		t.Errorf("content type = %q", ct)
+	}
+}
+
+// A guide or a playlist is generated on request and may take minutes; a
+// stream that does not start is given up on quickly.
+func TestProviderSlowToAnswer(t *testing.T) {
+	stream, api := streamHeaderTimeout, apiHeaderTimeout
+	streamHeaderTimeout, apiHeaderTimeout = 100*time.Millisecond, 5*time.Second
+	t.Cleanup(func() { streamHeaderTimeout, apiHeaderTimeout = stream, api })
+
+	p := newProvider(t)
+	p.guideDelay = 400 * time.Millisecond
+	base := proxy(t, p, nil)
+
+	if resp, body := get(t, base+"/xmltv.php?"+creds); resp.StatusCode != http.StatusOK || !strings.Contains(body, "<tv>") {
+		t.Errorf("slow guide: status %d, body %q", resp.StatusCode, body)
+	}
+	if resp, _ := get(t, base+"/live/me/secret/slow.ts"); resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("stream that does not start: status = %d, want 502", resp.StatusCode)
+	}
+}
+
+func TestAccessLogHidesTheProxysCredentials(t *testing.T) {
+	logs := captureLogs(t)
+	p := newProvider(t)
+	base := proxy(t, p, nil)
+
+	get(t, base+"/player_api.php?"+creds+"&action=get_live_categories")
+	get(t, base+"/live/me/secret/1.ts")
+	get(t, base+"/player_api.php?username=me&password=wrong")
+	get(t, base+"/live/me/secret/2.m3u8")
+
+	out := logs.String()
+	for _, want := range []string{`"/player_api.php?username=***&password=***&action=get_live_categories"`, `"/live/***/***/1.ts"`, "| 200 |", "| 401 |"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("log lacks %s:\n%s", want, out)
+		}
+	}
+	for _, secret := range []string{pass, "wrong", xPass} {
+		if strings.Contains(out, secret) {
+			t.Errorf("%q is in the log:\n%s", secret, out)
+		}
 	}
 }
 
