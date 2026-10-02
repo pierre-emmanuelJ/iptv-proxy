@@ -32,6 +32,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/hls"
+	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/xtream"
 )
 
 const (
@@ -41,6 +42,8 @@ const (
 	// sniffBytes is how much of a response is looked at to tell a playlist
 	// from media.
 	sniffBytes = 512
+	// maxErrorPageBytes bounds a provider's error page.
+	maxErrorPageBytes = 1 << 20
 	// maxPlaylistBytes bounds an HLS playlist: a day of DVR window is a few
 	// hundred kilobytes.
 	maxPlaylistBytes = 16 << 20
@@ -151,12 +154,44 @@ func (c *Config) hlsStream(ctx *gin.Context) {
 
 // passOn copies a provider response to the client.
 func (c *Config) passOn(ctx *gin.Context, resp *http.Response) {
+	c.dropLeakingHeaders(resp.Header)
+
+	// An error page is not media: it may repeat the address it was asked,
+	// which holds the provider's credentials.
+	if resp.StatusCode >= http.StatusBadRequest {
+		page, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorPageBytes))
+		c.errorPage(ctx, resp.StatusCode, resp.Header, page)
+		return
+	}
+
 	mergeHttpHeader(ctx.Writer.Header(), resp.Header)
 	ctx.Status(resp.StatusCode)
 	ctx.Writer.WriteHeaderNow()
 	// The copy ends when the provider or the client stops: neither is an
 	// error worth reporting.
 	_, _ = io.Copy(flushWriter{ctx.Writer}, resp.Body)
+}
+
+// errorPage sends a provider's error answer without its credentials.
+func (c *Config) errorPage(ctx *gin.Context, status int, header http.Header, page []byte) {
+	page = xtream.Scrub(page, c.providerAccount(), c.proxyAccount())
+
+	header.Del("Content-Length") // the page changed
+	mergeHttpHeader(ctx.Writer.Header(), header)
+	ctx.Data(status, header.Get("Content-Type"), page)
+}
+
+// dropLeakingHeaders removes the provider's headers that hold its password
+// (a Location, a cookie, a link).
+func (c *Config) dropLeakingHeaders(header http.Header) {
+	for name, values := range header {
+		for _, value := range values {
+			if xtream.Leaks(value, c.providerAccount()) {
+				header.Del(name)
+				break
+			}
+		}
+	}
 }
 
 // flushWriter sends each chunk as it comes: a live stream is not held back

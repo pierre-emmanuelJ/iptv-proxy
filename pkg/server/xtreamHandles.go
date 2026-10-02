@@ -233,6 +233,12 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context) {
 			Protocol: protocol,
 		})
 	}
+	c.dropLeakingHeaders(header)
+	if status >= http.StatusBadRequest {
+		// Not data: an error page, which may repeat the address asked.
+		c.errorPage(ctx, status, header, body)
+		return
+	}
 	body = xtream.Sanitize(body, c.providerAccount(), c.proxyAccount())
 
 	contentType := header.Get("Content-Type")

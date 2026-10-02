@@ -59,6 +59,54 @@ func TestSanitize(t *testing.T) {
 	}
 }
 
+// Parameters are not always next to each other, nor in that order.
+func TestSanitizeQueryParametersInAnyOrder(t *testing.T) {
+	in := `{"url":"http://provider.example:8080/player_api.php?action=get_short_epg&limit=2&password=x+pass&stream_id=1&username=xuser"}`
+	want := `{"url":"http://provider.example:8080/player_api.php?action=get_short_epg&limit=2&password=secret&stream_id=1&username=me"}`
+	if got := string(Sanitize([]byte(in), provider, proxy)); got != want {
+		t.Errorf("got  %s\nwant %s", got, want)
+	}
+}
+
+func TestScrub(t *testing.T) {
+	amp := Account{BaseURL: provider.BaseURL, User: "x&user", Password: `p<a>s"s w&d`}
+	for name, page := range map[string]string{
+		"address repeated":      `<html>404 Not Found: /player_api.php?action=x&password=p%3Ca%3Es%22s+w%26d&stream_id=1&username=x%26user</html>`,
+		"address, html escaped": `<p>/player_api.php?action=x&amp;password=p%3Ca%3Es%22s+w%26d&amp;username=x%26user</p>`,
+		"path":                  `No such file: /live/x&user/p%3Ca%3Es%22s%20w&d/1.ts`,
+		"plain":                 `Account x&user (p<a>s"s w&d) is not allowed`,
+		"plain, html escaped":   `Account x&amp;user (p&lt;a&gt;s&#34;s w&amp;d) is not allowed`,
+	} {
+		got := string(Scrub([]byte(page), amp, proxy))
+		if Leaks(got, amp) || strings.Contains(got, "x&user") || strings.Contains(got, "x%26user") || strings.Contains(got, "x&amp;user") {
+			t.Errorf("%s: still there in %s", name, got)
+		}
+		if !strings.Contains(got, "secret") || !strings.Contains(got, "me") {
+			t.Errorf("%s: the proxy's credentials should take their place: %s", name, got)
+		}
+	}
+
+	if got := string(Scrub([]byte("nothing to hide"), amp, proxy)); got != "nothing to hide" {
+		t.Errorf("got %q", got)
+	}
+	if got := string(Scrub([]byte("xuser"), Account{}, proxy)); got != "xuser" {
+		t.Errorf("an account with no credentials changes nothing, got %q", got)
+	}
+}
+
+func TestLeaks(t *testing.T) {
+	for text, want := range map[string]bool{
+		"password=x+pass": true, "/x%20pass/": true, "x pass": true, "xuser only": false, "": false,
+	} {
+		if got := Leaks(text, provider); got != want {
+			t.Errorf("Leaks(%q) = %v, want %v", text, got, want)
+		}
+	}
+	if Leaks("anything", Account{}) {
+		t.Error("an empty password leaks nowhere")
+	}
+}
+
 func TestSanitizeNeverLeavesThePassword(t *testing.T) {
 	body := `[{"a":"http:\/\/provider.example:8080\/series\/xuser\/x%20pass\/1.mp4"},{"b":"/xuser/x pass/2"},{"c":"?username=xuser&amp;password=x+pass"}]`
 	got := string(Sanitize([]byte(body), provider, proxy))

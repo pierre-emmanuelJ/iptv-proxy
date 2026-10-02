@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -164,6 +165,12 @@ func newProvider(t *testing.T) *provider {
 			fmt.Fprint(w, `{"epg_listings":[{"id":"1","title":"not base64 !!","start":"2025-10-02 20:00:00","start_timestamp":"1759428000","now_playing":0}]}`)
 		case "get_series":
 			fmt.Fprint(w, `{"1":{"series_id":7,"name":"Show"}}`) // an object instead of an array
+		case "echo":
+			// an error page repeating the address it was asked
+			w.Header().Set("Content-Type", "text/html")
+			w.Header().Set("Link", "<"+r.URL.RequestURI()+">; rel=self")
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, "<html>404: %s<br>%s</html>", r.URL.RequestURI(), html.EscapeString(r.URL.RequestURI()))
 		case "broken":
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprint(w, `<html>Fatal error</html>`)
@@ -187,6 +194,11 @@ func newProvider(t *testing.T) *provider {
 
 	mux.HandleFunc("/xmltv.php", func(w http.ResponseWriter, r *http.Request) {
 		if !authorized(w, r) {
+			return
+		}
+		if r.URL.Query().Get("fail") != "" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprintf(w, "<html>Busy: %s</html>", r.URL.RequestURI())
 			return
 		}
 		time.Sleep(p.guideDelay) // a large guide takes a while to generate
@@ -217,6 +229,12 @@ func newProvider(t *testing.T) *provider {
 		case <-time.After(400 * time.Millisecond):
 		case <-r.Context().Done():
 		}
+	})
+	mux.HandleFunc("/live/xuser/xpass/missing.ts", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintf(w, "<html>No such stream: %s</html>", r.URL.Path)
 	})
 	mux.HandleFunc("/series/xuser/xpass/5.mp4", func(w http.ResponseWriter, r *http.Request) {
 		p.hit(r)
@@ -505,6 +523,34 @@ func TestAPIProviderErrorIsPassedOn(t *testing.T) {
 	resp, body := get(t, base+"/player_api.php?"+creds+"&action=broken")
 	if resp.StatusCode != http.StatusInternalServerError || !strings.Contains(body, "Fatal error") {
 		t.Errorf("status %d, body %q", resp.StatusCode, body)
+	}
+}
+
+// A provider's error page may repeat the address it was asked: its
+// credentials are in it, in an order and a form of its own.
+func TestProviderErrorPagesDoNotCarryItsCredentials(t *testing.T) {
+	p := newProvider(t)
+	base := proxy(t, p, nil)
+
+	for path, want := range map[string]int{
+		"/player_api.php?" + creds + "&action=echo&stream_id=1&limit=2": http.StatusNotFound,
+		"/live/me/secret/missing.ts":                                    http.StatusNotFound,
+		"/xmltv.php?" + creds + "&fail=1":                               http.StatusServiceUnavailable,
+	} {
+		resp, body := get(t, base+path)
+		if resp.StatusCode != want {
+			t.Errorf("%s: status = %d, want the provider's %d", path, resp.StatusCode, want)
+		}
+		noProviderCredentials(t, path, body)
+		if !strings.Contains(body, "<html>") || !strings.Contains(body, pass) {
+			t.Errorf("%s: the page should come through, with the proxy's credentials in place of the provider's:\n%s", path, body)
+		}
+		if cl := resp.Header.Get("Content-Length"); cl != fmt.Sprint(len(body)) {
+			t.Errorf("%s: content length = %s for %d bytes", path, cl, len(body))
+		}
+		for name, values := range resp.Header {
+			noProviderCredentials(t, path+" header "+name, strings.Join(values, " "))
+		}
 	}
 }
 

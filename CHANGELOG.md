@@ -13,6 +13,18 @@
 - A playlist asked with `Range: bytes=0-`, as players do, is no longer cut
   short.
 
+### Security
+
+- **A provider's error page could reach a client with the provider's
+  credentials in it** (3.8.0 and earlier). Such a page often repeats the
+  address it was asked, which holds them. Error answers of the provider (API,
+  streams, guide) now have its user and password replaced by the proxy's, in
+  every form an address or a page carries them, and a response header holding
+  the password is dropped. Only someone with the proxy's own credentials could
+  see such a page.
+- In API answers, the provider's credentials given as query parameters are
+  rewritten whatever their order.
+
 ### Changed
 
 - Addresses in HLS playlists are opaque: `/hls/<token>/<name>`. The token is
