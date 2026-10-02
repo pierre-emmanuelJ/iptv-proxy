@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.8.0 (unreleased)
+## 3.8.0
 
 A maintenance release: the same proxy and the same options, on a base that
 no longer depends on how a given provider formats its answers.
@@ -55,6 +55,9 @@ no longer depends on how a given provider formats its answers.
 - Go 1.27, dependencies up to date, no vendored code: the two libraries that
   parsed playlists and Xtream answers are replaced by two small packages
   (`pkg/m3u`, `pkg/xtream`).
+- Docker images are published to Docker Hub (`pierro777/iptv-proxy`) and to
+  `ghcr.io/pierre-emmanuelj/iptv-proxy`, which replaces the retired
+  `docker.pkg.github.com` registry.
 - A test suite: a fake provider with real-world quirks, checks that the
   provider's credentials never reach a client or a log, and fuzzing of the
   playlist reader. CI runs it with the race detector and a strict linter.

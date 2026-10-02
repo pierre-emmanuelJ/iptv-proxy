@@ -17,3 +17,6 @@ iptv-proxy
 iptv/iptv.m3u
 
 
+
+# GoReleaser output
+dist/
