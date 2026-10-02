@@ -27,7 +27,7 @@ import (
 	"strings"
 
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/config"
-
+	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/filter"
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/server"
 
 	"github.com/gin-gonic/gin"
@@ -115,6 +115,17 @@ func proxyConfig(cmd *cobra.Command) (*config.ProxyConfig, error) {
 		XtreamApiGetMovies:   viper.GetBool("xtream-api-get-movies"),
 		UserAgent:            viper.GetString("user-agent"),
 		NoStreamSharing:      viper.GetBool("no-stream-sharing"),
+		Filter: filter.Patterns{
+			Group:          viper.GetString("group-regex"),
+			Channel:        viper.GetString("channel-regex"),
+			GroupExclude:   viper.GetString("group-exclude-regex"),
+			ChannelExclude: viper.GetString("channel-exclude-regex"),
+		},
+		ListenAddress: viper.GetString("listen-address"),
+	}
+	// An invalid expression is reported before anything starts.
+	if _, err := filter.New(conf.Filter); err != nil {
+		return nil, err
 	}
 
 	if conf.AdvertisedPort == 0 {
@@ -126,16 +137,35 @@ func proxyConfig(cmd *cobra.Command) (*config.ProxyConfig, error) {
 
 // setting reads one of the options whose environment variable is also an
 // ordinary system variable: a shell sets USER to the login name, Docker sets
-// HOSTNAME to the container's id. PROXY_USER, PROXY_PASSWORD and
-// PROXY_HOSTNAME say what is meant: they win over the old names, which keep
-// working, and only a flag given on the command line wins over them.
+// HOSTNAME to the container's id. What was meant wins over what the system
+// set: a flag given on the command line, then PROXY_USER, PROXY_PASSWORD or
+// PROXY_HOSTNAME, then the configuration file, and only then the old names,
+// which keep working.
 func setting(cmd *cobra.Command, option string) string {
-	if !cmd.Flags().Changed(option) {
-		if value := os.Getenv("PROXY_" + strings.ToUpper(option)); value != "" {
-			return value
-		}
+	if cmd.Flags().Changed(option) {
+		return viper.GetString(option)
+	}
+	if value := os.Getenv("PROXY_" + strings.ToUpper(option)); value != "" {
+		return value
+	}
+	if value, ok := fileSetting(option); ok {
+		return value
 	}
 	return viper.GetString(option)
+}
+
+// fileSetting reads an option from the configuration file alone: viper puts
+// the environment above the file.
+func fileSetting(option string) (string, bool) {
+	if viper.ConfigFileUsed() == "" || !viper.InConfig(option) {
+		return "", false
+	}
+	file := viper.New()
+	file.SetConfigFile(viper.ConfigFileUsed())
+	if err := file.ReadInConfig(); err != nil {
+		return "", false
+	}
+	return file.GetString(option), true
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -159,6 +189,7 @@ func init() {
 	rootCmd.Flags().StringP("custom-endpoint", "", "", `Custom endpoint "http://poxy.com/<custom-endpoint>/iptv.m3u"`)
 	rootCmd.Flags().StringP("custom-id", "", "", `Custom anti-collison ID for each track "http://proxy.com/<custom-id>/..."`)
 	rootCmd.Flags().Int("port", 8080, "Iptv-proxy listening port")
+	rootCmd.Flags().String("listen-address", "", "IP address to listen on (default: every interface)")
 	rootCmd.Flags().Int("advertised-port", 0, "Port to expose the IPTV file and xtream (by default, it's taking value from port) useful to put behind a reverse proxy")
 	rootCmd.Flags().String("hostname", "", "Hostname or IP to expose the IPTVs endpoints")
 	rootCmd.Flags().BoolP("https", "", false, "Activate https for urls proxy")
@@ -172,6 +203,10 @@ func init() {
 	rootCmd.Flags().Bool("xtream-api-get-movies", false, "Add the provider's movies to the playlist generated from the xtream API (large catalogues make a playlist some players cannot load)")
 	rootCmd.Flags().String("user-agent", "", "User-Agent sent to the provider instead of the client's (some providers only answer known players)")
 	rootCmd.Flags().Bool("no-stream-sharing", false, "Open one provider connection per client for a live stream, instead of sharing one between the clients watching it")
+	rootCmd.Flags().String("group-regex", "", `Keep only the live channels whose group matches this regular expression, e.g. "^(FR|UK) "`)
+	rootCmd.Flags().String("channel-regex", "", `Keep only the live channels whose name matches this regular expression, e.g. "HD$"`)
+	rootCmd.Flags().String("group-exclude-regex", "", `Leave out the live channels whose group matches this regular expression, e.g. "(?i)adult"`)
+	rootCmd.Flags().String("channel-exclude-regex", "", `Leave out the live channels whose name matches this regular expression`)
 
 	if e := viper.BindPFlags(rootCmd.Flags()); e != nil {
 		log.Fatal("error binding PFlags to viper")

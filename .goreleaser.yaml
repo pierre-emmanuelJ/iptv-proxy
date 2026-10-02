@@ -69,18 +69,10 @@ dockers:
     - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}-amd64"
     - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}.{{ .Minor }}-amd64"
     - "ghcr.io/pierre-emmanuelj/iptv-proxy:latest-amd64"
-    - "ghcr.io/pierre-emmanuelj/iptv-proxy:{{ .Tag }}"
-    - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}"
-    - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}.{{ .Minor }}"
-    - "ghcr.io/pierre-emmanuelj/iptv-proxy:latest"
     - "pierro777/iptv-proxy:{{ .Tag }}-amd64"
     - "pierro777/iptv-proxy:v{{ .Major }}-amd64"
     - "pierro777/iptv-proxy:v{{ .Major }}.{{ .Minor }}-amd64"
     - "pierro777/iptv-proxy:latest-amd64"
-    - "pierro777/iptv-proxy:{{ .Tag }}"
-    - "pierro777/iptv-proxy:v{{ .Major }}"
-    - "pierro777/iptv-proxy:v{{ .Major }}.{{ .Minor }}"
-    - "pierro777/iptv-proxy:latest"
     use: buildx
     goos: linux
     goarch: amd64
@@ -94,3 +86,38 @@ dockers:
     - "--label=org.opencontainers.image.version={{.Version}}"
     skip_push: false
     dockerfile: .Dockerfile.goreleaser
+
+# The usual tags name both architectures: Docker pulls the one of the host.
+docker_manifests:
+  - name_template: "pierro777/iptv-proxy:{{ .Tag }}"
+    image_templates:
+      - "pierro777/iptv-proxy:{{ .Tag }}-amd64"
+      - "pierro777/iptv-proxy:{{ .Tag }}-arm64"
+  - name_template: "pierro777/iptv-proxy:v{{ .Major }}"
+    image_templates:
+      - "pierro777/iptv-proxy:v{{ .Major }}-amd64"
+      - "pierro777/iptv-proxy:v{{ .Major }}-arm64"
+  - name_template: "pierro777/iptv-proxy:v{{ .Major }}.{{ .Minor }}"
+    image_templates:
+      - "pierro777/iptv-proxy:v{{ .Major }}.{{ .Minor }}-amd64"
+      - "pierro777/iptv-proxy:v{{ .Major }}.{{ .Minor }}-arm64"
+  - name_template: "pierro777/iptv-proxy:latest"
+    image_templates:
+      - "pierro777/iptv-proxy:latest-amd64"
+      - "pierro777/iptv-proxy:latest-arm64"
+  - name_template: "ghcr.io/pierre-emmanuelj/iptv-proxy:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/pierre-emmanuelj/iptv-proxy:{{ .Tag }}-amd64"
+      - "ghcr.io/pierre-emmanuelj/iptv-proxy:{{ .Tag }}-arm64"
+  - name_template: "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}"
+    image_templates:
+      - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}-amd64"
+      - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}-arm64"
+  - name_template: "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}.{{ .Minor }}"
+    image_templates:
+      - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}.{{ .Minor }}-amd64"
+      - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}.{{ .Minor }}-arm64"
+  - name_template: "ghcr.io/pierre-emmanuelj/iptv-proxy:latest"
+    image_templates:
+      - "ghcr.io/pierre-emmanuelj/iptv-proxy:latest-amd64"
+      - "ghcr.io/pierre-emmanuelj/iptv-proxy:latest-arm64"

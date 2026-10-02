@@ -278,6 +278,10 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context) {
 		return
 	}
 	body = xtream.Sanitize(body, c.providerAccount(), c.proxyAccount())
+	if body, err = c.filterAPIList(ctx, action, body); err != nil {
+		c.upstreamError(ctx, err)
+		return
+	}
 
 	contentType := header.Get("Content-Type")
 	if contentType == "" {
@@ -287,8 +291,18 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context) {
 }
 
 // xtreamXMLTV passes the provider's guide on as it comes: it can weigh
-// hundreds of megabytes.
+// hundreds of megabytes. With filters, the channels left out are taken out
+// on the way.
 func (c *Config) xtreamXMLTV(ctx *gin.Context) {
+	var kept map[string]bool
+	if c.rules.Active() {
+		var err error
+		if kept, err = c.guideChannels(ctx); err != nil {
+			c.upstreamError(ctx, err)
+			return
+		}
+	}
+
 	resp, err := c.upstream(ctx, c.apiClient, c.providerAccount().APIURL("xmltv.php", ctx.Request.Form), false)
 	if err != nil {
 		c.upstreamError(ctx, err)
@@ -298,6 +312,10 @@ func (c *Config) xtreamXMLTV(ctx *gin.Context) {
 
 	if resp.Header.Get("Content-Type") == "" {
 		resp.Header.Set("Content-Type", "application/xml")
+	}
+	if kept != nil {
+		c.passOnGuide(ctx, resp, kept)
+		return
 	}
 	c.passOn(ctx, resp)
 }

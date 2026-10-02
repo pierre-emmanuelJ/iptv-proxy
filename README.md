@@ -28,9 +28,9 @@ give to your players. Replace them with your own.
 ```sh
 docker run -d --name iptv-proxy -p 8080:8080 \
   -e M3U_URL="http://provider.example:8080/playlist.m3u" \
-  -e HOSTNAME=192.168.1.10 \
-  -e USER=family \
-  -e PASSWORD=choose-a-password \
+  -e PROXY_HOSTNAME=192.168.1.10 \
+  -e PROXY_USER=family \
+  -e PROXY_PASSWORD=choose-a-password \
   -e GIN_MODE=release \
   pierro777/iptv-proxy:latest
 ```
@@ -53,9 +53,9 @@ The playlist can also be a local file: mount it and give its path.
 docker run -d --name iptv-proxy -p 8080:8080 \
   -v "$PWD/iptv.m3u:/iptv.m3u:ro" \
   -e M3U_URL=/iptv.m3u \
-  -e HOSTNAME=192.168.1.10 \
-  -e USER=family \
-  -e PASSWORD=choose-a-password \
+  -e PROXY_HOSTNAME=192.168.1.10 \
+  -e PROXY_USER=family \
+  -e PROXY_PASSWORD=choose-a-password \
   -e GIN_MODE=release \
   pierro777/iptv-proxy:latest
 ```
@@ -67,9 +67,9 @@ docker run -d --name iptv-proxy -p 8080:8080 \
   -e XTREAM_BASE_URL="http://provider.example:8080" \
   -e XTREAM_USER=xtream_user \
   -e XTREAM_PASSWORD=xtream_password \
-  -e HOSTNAME=192.168.1.10 \
-  -e USER=family \
-  -e PASSWORD=choose-a-password \
+  -e PROXY_HOSTNAME=192.168.1.10 \
+  -e PROXY_USER=family \
+  -e PROXY_PASSWORD=choose-a-password \
   -e GIN_MODE=release \
   pierro777/iptv-proxy:latest
 ```
@@ -96,8 +96,10 @@ Guide:    http://192.168.1.10:8080/xmltv.php?username=family&password=choose-a-p
 | Docker Hub | `pierro777/iptv-proxy` |
 | GitHub | `ghcr.io/pierre-emmanuelj/iptv-proxy` |
 
-Tags: `latest`, and for a given version `v3.9.0`, `v3.9` or `v3`. On ARM
-(Raspberry Pi, Apple silicon), add `-arm64`: `pierro777/iptv-proxy:latest-arm64`.
+Tags: `latest`, and for a given version `v3.12.0`, `v3.12` or `v3`. Since
+v3.12.0 they work on amd64 and on ARM (Raspberry Pi, Apple silicon): Docker
+pulls the image of your machine. The `-amd64` and `-arm64` tags
+(`pierro777/iptv-proxy:latest-arm64`) name one architecture, as before.
 
 ### Docker Compose
 
@@ -118,10 +120,10 @@ services:
       # XTREAM_PASSWORD: xtream_password
       PORT: 8080
       # Name or IP your players reach this machine at
-      HOSTNAME: 192.168.1.10
+      PROXY_HOSTNAME: 192.168.1.10
       # What your players log in with
-      USER: family
-      PASSWORD: choose-a-password
+      PROXY_USER: family
+      PROXY_PASSWORD: choose-a-password
       GIN_MODE: release
 ```
 
@@ -157,8 +159,9 @@ Quote the playlist address: it usually contains `?` and `&`.
 
 ## Options
 
-Every option is a flag or an environment variable: the flag's name in upper
-case, with `_` instead of `-`. A flag wins over the variable.
+Every option is a flag, an environment variable (the flag's name in upper
+case, with `_` instead of `-`) or a line of the configuration file. A flag
+wins over the variable, and the variable over the file.
 
 | Flag | Environment variable | Default | What it does |
 |---|---|---|---|
@@ -168,6 +171,7 @@ case, with `_` instead of `-`. A flag wins over the variable.
 | `--xtream-password` | `XTREAM_PASSWORD` | | Provider's Xtream Codes password. |
 | `--hostname` | `PROXY_HOSTNAME` (or `HOSTNAME`) | | Name or IP your players reach the proxy at. It is written in every address the proxy gives out. |
 | `--port` | `PORT` | `8080` | Port the proxy listens on. |
+| `--listen-address` | `LISTEN_ADDRESS` | every interface | IP address the proxy listens on, e.g. `127.0.0.1` behind a reverse proxy on the same machine. |
 | `--advertised-port` | `ADVERTISED_PORT` | value of `--port` | Port written in the addresses the proxy gives out, when it differs from the listening port (behind a reverse proxy, or a different published Docker port). |
 | `--https` | `HTTPS` | `false` | Write `https://` instead of `http://` in the addresses the proxy gives out. The proxy itself always listens in plain HTTP: put a reverse proxy in front for TLS. |
 | `--user` | `PROXY_USER` (or `USER`) | `usertest` | User your players log in with. |
@@ -180,6 +184,10 @@ case, with `_` instead of `-`. A flag wins over the variable.
 | `--xtream-api-get-movies` | `XTREAM_API_GET_MOVIES` | `false` | Add the provider's movies to that generated playlist. Off by default: a catalogue of tens of thousands of movies makes a playlist some players cannot load. Series are not added (see below). |
 | `--user-agent` | `USER_AGENT` | | User-Agent sent to the provider instead of the player's. Some providers only answer known players. |
 | `--no-stream-sharing` | `NO_STREAM_SHARING` | `false` | Open one provider connection per player for a live stream, instead of sharing one between the players watching it. |
+| `--group-regex` | `GROUP_REGEX` | | Keep only the live channels whose group matches this regular expression. See [Filtering channels](#filtering-channels). |
+| `--channel-regex` | `CHANNEL_REGEX` | | Keep only the live channels whose name matches this regular expression. |
+| `--group-exclude-regex` | `GROUP_EXCLUDE_REGEX` | | Leave out the live channels whose group matches this regular expression. |
+| `--channel-exclude-regex` | `CHANNEL_EXCLUDE_REGEX` | | Leave out the live channels whose name matches this regular expression. |
 | `--iptv-proxy-config` | | `.iptv-proxy.yaml` in the home or current directory | YAML file holding the same options, named as the flags (`m3u-url: ...`). |
 
 Good to know:
@@ -188,7 +196,9 @@ Good to know:
 - `USER` and `HOSTNAME` are also ordinary system variables: a shell sets
   `USER` to your login name, and Docker sets `HOSTNAME` to the container's ID.
   Since v3.11.0, prefer `PROXY_USER`, `PROXY_PASSWORD` and `PROXY_HOSTNAME`:
-  they win over the old names, which keep working.
+  they win over the old names, which keep working. Since v3.12.0, `user`,
+  `password` and `hostname` in the configuration file also win over the old
+  names.
 - `GIN_MODE` is not an option of the proxy but of its web framework. Since
   v3.10.0 the proxy runs in `release` mode unless you set it. Before that,
   set `GIN_MODE=release` as the examples do: the debug mode lists the routes
@@ -225,6 +235,12 @@ http://192.168.1.10:8080/e3c0c308/family/choose-a-password/1/2.m3u8
 `e3c0c308` is the `--custom-id`. Tokens and other query parameters of the
 provider's addresses stay on the proxy.
 
+Some playlists name the provider's credentials outside of the track
+addresses too: a guide address in `url-tvg`, a catch-up address in
+`catchup-source`, a player option. Such an attribute or line is removed, so
+that the credentials never reach a player. (In an Xtream Codes playlist, they
+point to the proxy instead: see below.)
+
 ## Xtream Codes
 
 The proxy answers the Xtream Codes client API like the provider does: live,
@@ -240,7 +256,9 @@ address and credentials, the proxy asks the provider with the real ones.
 The provider's answers are passed on as they are, so the fields and quirks of
 any provider reach the player. Only what names the provider is rewritten: the
 account and server of the login answer, and the addresses holding its
-credentials.
+credentials. In the `get.php` playlist, the guide (`url-tvg`) and catch-up
+(`catchup-source`) addresses of the provider become the proxy's, and work
+through it.
 
 Endpoints served:
 
@@ -279,6 +297,42 @@ provider's address, encrypted: a player never sees the provider's host,
 credentials or session tokens. Nothing is stored, and tokens stay valid across
 restarts.
 
+## Filtering channels
+
+Four options keep the live channels you want and leave out the others. Each
+takes a [regular expression](https://github.com/google/re2/wiki/Syntax) matched
+against a channel's group (`group-title` in a playlist, the category in the
+Xtream API) or its name:
+
+- `--group-regex`, `--channel-regex`: keep only what matches.
+- `--group-exclude-regex`, `--channel-exclude-regex`: leave out what matches,
+  even if it was kept by the first two.
+
+A channel is kept when it passes all of them. The expressions are case
+sensitive; start one with `(?i)` to ignore case.
+
+```sh
+  -e GROUP_REGEX='^(FR|UK) ' \
+  -e GROUP_EXCLUDE_REGEX='(?i)adult|xxx' \
+  -e CHANNEL_EXCLUDE_REGEX='(?i)backup|test' \
+```
+
+The filters apply to:
+
+- the M3U playlist (`/iptv.m3u`) and the Xtream playlists (`/get.php`,
+  `/apiget`): a channel left out is not in it, and in M3U mode it has no
+  address on the proxy;
+- the live categories and channels of the Xtream API;
+- the guide (`/xmltv.php`): only the channels kept, and their programmes, are
+  in it. A guide of thousands of channels shrinks to the ones you watch.
+
+Movies and series are not filtered. In a `get.php` playlist that holds movies,
+the same rules apply to them, by their group and name.
+
+The filters choose what players are shown; they are not access control. A
+player that already knows the id of a channel left out can still play it
+through the Xtream API.
+
 ## Live streams: one connection to the provider
 
 An IPTV account allows a few connections at a time, often a single one. When
@@ -303,7 +357,7 @@ which addresses to give out:
 ```yaml
     environment:
       PORT: 8080             # where iptv-proxy listens
-      HOSTNAME: iptv.example.com
+      PROXY_HOSTNAME: iptv.example.com
       ADVERTISED_PORT: 443   # the port your players use
       HTTPS: 1               # addresses given out start with https://
 ```
@@ -343,9 +397,11 @@ docker compose up -d
 
 Planned, not available yet:
 
-- Filtering the channels and groups a playlist contains.
-- Several providers behind one proxy.
-- Several users, each with their own credentials.
+- Keeping the last good playlist, lists and guide when the provider fails,
+  and reloading an M3U playlist without a restart.
+- HDHomeRun emulation, for Plex.
+- Several users, each with their own credentials and limits.
+- Several providers behind one proxy, with failover.
 
 See the [changelog](CHANGELOG.md) for what each release brought.
 

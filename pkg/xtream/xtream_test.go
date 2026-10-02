@@ -2,6 +2,7 @@ package xtream
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -44,8 +45,12 @@ func TestSanitize(t *testing.T) {
 			`{"url":"http://cdn.other.example/hls/me/secret/7.m3u8"}`,
 		},
 		"credentials in a query": {
-			`{"epg":"http://provider.example:8080/xmltv.php?username=xuser&password=x+pass"}`,
-			`{"epg":"http://provider.example:8080/xmltv.php?username=me&password=secret"}`,
+			`{"epg":"http://other.example/epg.php?username=xuser&password=x+pass"}`,
+			`{"epg":"http://other.example/epg.php?username=me&password=secret"}`,
+		},
+		"the provider's API is the proxy's": {
+			`{"epg":"http:\/\/provider.example:8080\/xmltv.php?username=xuser&password=x+pass","list":"http://provider.example:8080/get.php?password=x+pass&username=xuser&type=m3u"}`,
+			`{"epg":"https:\/\/proxy.example:443\/tv\/xmltv.php?username=me&password=secret","list":"https://proxy.example:443/tv/get.php?password=secret&username=me&type=m3u"}`,
 		},
 		"logos stay on the provider": {
 			`{"stream_icon":"http:\/\/provider.example:8080\/images\/one.png","name":"xuser"}`,
@@ -61,8 +66,8 @@ func TestSanitize(t *testing.T) {
 
 // Parameters are not always next to each other, nor in that order.
 func TestSanitizeQueryParametersInAnyOrder(t *testing.T) {
-	in := `{"url":"http://provider.example:8080/player_api.php?action=get_short_epg&limit=2&password=x+pass&stream_id=1&username=xuser"}`
-	want := `{"url":"http://provider.example:8080/player_api.php?action=get_short_epg&limit=2&password=secret&stream_id=1&username=me"}`
+	in := `{"url":"http://other.example/api.php?action=get_short_epg&limit=2&password=x+pass&stream_id=1&username=xuser"}`
+	want := `{"url":"http://other.example/api.php?action=get_short_epg&limit=2&password=secret&stream_id=1&username=me"}`
 	if got := string(Sanitize([]byte(in), provider, proxy)); got != want {
 		t.Errorf("got  %s\nwant %s", got, want)
 	}
@@ -233,6 +238,46 @@ func TestDecodeList(t *testing.T) {
 	}
 	if _, err := DecodeList([]byte(`<html>`)); err == nil {
 		t.Error("HTML is not a list")
+	}
+}
+
+func TestFilterList(t *testing.T) {
+	odd := func(entry map[string]any) bool {
+		id, _ := strconv.Atoi(Text(entry["stream_id"]))
+		return id%2 == 1
+	}
+	for name, c := range map[string][2]string{
+		// kept entries are written byte for byte: spacing, key order,
+		// escaped slashes, numbers as the provider wrote them
+		"array": {
+			`[ {"stream_id":1, "icon":"http:\/\/x\/1.png","rating":7.50} , {"stream_id":"2"},{"stream_id":"3","a":{"b":[1,2]}} ]`,
+			`[{"stream_id":1, "icon":"http:\/\/x\/1.png","rating":7.50},{"stream_id":"3","a":{"b":[1,2]}}]`,
+		},
+		"object keyed by index": {
+			`{"10":{"stream_id":2},"2":{"stream_id":3},"1":{"stream_id":5}}`,
+			`{"2":{"stream_id":3},"1":{"stream_id":5}}`,
+		},
+		"nothing kept":          {`[{"stream_id":2}]`, `[]`},
+		"empty":                 {`[]`, `[]`},
+		"entries not objects":   {`[{"stream_id":2}, "x", null, 4]`, `["x",null,4]`},
+		"not a list":            {`null`, `null`},
+		"a login answer":        {`{"user_info":{"auth":0}}`, `{"user_info":{"auth":0}}`},
+		"a login answer, later": {`{"1":{"stream_id":2},"server_info":{}}`, `{"1":{"stream_id":2},"server_info":{}}`},
+	} {
+		got, err := FilterList([]byte(c[0]), odd)
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if string(got) != c[1] {
+			t.Errorf("%s:\n got %s\nwant %s", name, got, c[1])
+		}
+	}
+
+	for _, broken := range []string{``, `<html>`, `[{"stream_id":1}`, `[{"stream_id":1},]`, `{"1":}`} {
+		if _, err := FilterList([]byte(broken), odd); err == nil {
+			t.Errorf("FilterList(%q): no error", broken)
+		}
 	}
 }
 

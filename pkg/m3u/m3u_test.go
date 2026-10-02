@@ -99,6 +99,79 @@ func TestExtInfLine(t *testing.T) {
 	}
 }
 
+func TestGroup(t *testing.T) {
+	for want, track := range map[string]Track{
+		"News":    {ExtInf: `#EXTINF:-1 tvg-name="A, B" group-title="News",group-title="Not this"`},
+		"Sport":   {ExtInf: `#EXTINF:-1,Sport`, Extra: []string{"#EXTVLCOPT:x=y", "#EXTGRP: Sport "}},
+		"Kept":    {ExtInf: `#EXTINF:-1 group-title="Kept"`, Extra: []string{"#EXTGRP:Other"}},
+		"":        {ExtInf: `#EXTINF:-1,No group`},
+		"Unnamed": {ExtInf: `#EXTINF:-1 group-title="Unnamed"`},
+	} {
+		if got := track.Group(); got != want {
+			t.Errorf("Group(%+v) = %q, want %q", track, got, want)
+		}
+	}
+}
+
+func TestAttribute(t *testing.T) {
+	line := `#EXTINF:-1 tvg-id="" catchup-source="http://h/a?b=1,c" group-title="G",Name group-title="no"`
+	for name, want := range map[string]string{"tvg-id": "", "catchup-source": "http://h/a?b=1,c", "group-title": "G"} {
+		if got, ok := Attribute(line, name); !ok || got != want {
+			t.Errorf("Attribute(%q) = %q, %v; want %q", name, got, ok, want)
+		}
+	}
+	if _, ok := Attribute(line, "tvg-logo"); ok {
+		t.Error("an absent attribute was found")
+	}
+	if got, ok := Attribute(`#EXTM3U url-tvg="http://g/e.xml" x-tvg-url="y"`, "x-tvg-url"); !ok || got != "y" {
+		t.Errorf("header attribute = %q, %v", got, ok)
+	}
+}
+
+func TestEditAttributes(t *testing.T) {
+	edit := func(name, value string) (string, bool) {
+		switch name {
+		case "catchup-source":
+			return "", false
+		case "tvg-logo":
+			return `new "logo"`, true
+		}
+		return value, true
+	}
+	for line, want := range map[string]string{
+		`#EXTINF:-1 catchup-source="x" tvg-logo="old" group-title="G",Name catchup-source="y"`: `#EXTINF:-1 tvg-logo="new 'logo'" group-title="G",Name catchup-source="y"`,
+		`#EXTINF:-1  tvg-id="i"   catchup-source="x",Name`:                                     `#EXTINF:-1  tvg-id="i",Name`,
+		`#EXTM3U catchup-source="x" url-tvg="g"`:                                               `#EXTM3U url-tvg="g"`,
+		`#EXTM3U catchup-source="x"`:                                                           `#EXTM3U`,
+		`#EXTINF:-1,No attributes`:                                                             `#EXTINF:-1,No attributes`,
+	} {
+		if got := EditAttributes(line, edit); got != want {
+			t.Errorf("EditAttributes(%q)\n got %q\nwant %q", line, got, want)
+		}
+	}
+	unchanged := `#EXTINF:-1 tvg-id="i" group-title="G",Name`
+	if got := EditAttributes(unchanged, func(_, v string) (string, bool) { return v, true }); got != unchanged {
+		t.Errorf("an edit that changes nothing changed %q into %q", unchanged, got)
+	}
+}
+
+func FuzzEditAttributes(f *testing.F) {
+	f.Add(`#EXTINF:-1 a="b" c="d,e",Name f="g"`)
+	f.Add(`#EXTM3U url-tvg="x"`)
+	f.Add(`#EXTINF:-1 a="`)
+	f.Fuzz(func(t *testing.T, line string) {
+		// keeping every value as it is keeps the line as it is
+		if got := EditAttributes(line, func(_, v string) (string, bool) { return v, true }); got != line {
+			t.Fatalf("identity edit changed %q into %q", line, got)
+		}
+		// dropping attributes shortens the line and keeps the display name
+		dropped := EditAttributes(line, func(string, string) (string, bool) { return "", false })
+		if len(dropped) > len(line) || !strings.HasSuffix(dropped, line[len(attributes(line)):]) {
+			t.Fatalf("dropping attributes of %q gave %q", line, dropped)
+		}
+	})
+}
+
 func FuzzParse(f *testing.F) {
 	f.Add(sample)
 	f.Add("#EXTM3U\n#EXTINF:-1,\n")

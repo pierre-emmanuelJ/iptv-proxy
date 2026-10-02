@@ -25,10 +25,12 @@ jobs:
         go tool cover -func=coverage.out | tail -1
         # every package that has tests keeps at least 80% of its statements covered
         go test -count=1 -cover ./... | awk '/^ok/ && match($0, /coverage: [0-9.]+%/) { pct = substr($0, RSTART + 10, RLENGTH - 11); if (pct + 0 < 80) { print "under 80%: " $2 " (" pct "%)"; bad = 1 } } END { exit bad }'
-    - name: Fuzz the playlist readers
+    - name: Fuzz the playlist and guide readers
       run: |
         go test ./pkg/m3u/ -run '^$' -fuzz FuzzParse -fuzztime 30s
         go test ./pkg/hls/ -run '^$' -fuzz FuzzRewrite -fuzztime 30s
+        go test ./pkg/m3u/ -run '^$' -fuzz FuzzEditAttributes -fuzztime 30s
+        go test ./pkg/xmltv/ -run '^$' -fuzz FuzzFilter -fuzztime 30s
     - name: Build
       run: go build ./...
   docker-build:

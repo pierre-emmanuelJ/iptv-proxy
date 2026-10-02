@@ -1,5 +1,39 @@
 # Changelog
 
+## 3.12.0
+
+### Added
+
+- **Channel filters.** `--group-regex`, `--channel-regex`,
+  `--group-exclude-regex` and `--channel-exclude-regex` (`GROUP_REGEX`...)
+  keep the live channels you want, by group and by name, with regular
+  expressions. They apply to the M3U and Xtream playlists, to the live
+  categories and channels of the Xtream API, and to the guide: `xmltv.php`
+  only holds the channels kept and their programmes, filtered as it streams
+  (a compressed guide included). Without filters, answers are passed on as
+  before. (#162; option names from #59, thanks @rodriguezst, and the idea of
+  #57, thanks @p418)
+- `--listen-address` (`LISTEN_ADDRESS`): the IP address the proxy listens on,
+  instead of every interface. (#136)
+- The Docker tags `latest`, `v3`, `v3.12` and `v3.12.0` now hold both amd64
+  and arm64 images: a Raspberry Pi pulls the right one. The `-amd64` and
+  `-arm64` tags stay.
+
+### Fixed
+
+- Provider credentials written outside of the track addresses of a playlist
+  reached the players: a guide address in `url-tvg`, a catch-up address in
+  `catchup-source`, a player option. In an Xtream playlist these addresses
+  now point to the proxy (catch-up plays through it); in an M3U playlist, an
+  attribute or line that names the provider's password is removed.
+- In the Xtream API, an address of the provider's own API (a guide address)
+  now points to the proxy instead of keeping the provider's host.
+- `hostname`, `user` and `password` in the configuration file lost to the
+  system's `HOSTNAME` and `USER` variables. The file now wins over the old
+  variable names; `PROXY_HOSTNAME`, `PROXY_USER`, `PROXY_PASSWORD` and flags
+  still win over the file. (#113)
+- The examples use `PROXY_HOSTNAME`, `PROXY_USER` and `PROXY_PASSWORD`.
+
 ## 3.11.0
 
 ### Added

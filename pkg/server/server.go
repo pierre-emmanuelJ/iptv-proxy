@@ -31,6 +31,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +40,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/config"
+	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/filter"
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/hls"
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/m3u"
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/restream"
@@ -92,6 +94,10 @@ type Config struct {
 
 	m3uCacheLock sync.Mutex
 	m3uCache     map[string]cachedM3U
+
+	// rules keep the channels clients see; nil keeps them all.
+	rules  *filter.Rules
+	groups liveGroups
 }
 
 type cachedM3U struct {
@@ -132,6 +138,10 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 		return nil, err
 	}
 	c.tokens = tokens
+
+	if c.rules, err = filter.New(config.Filter); err != nil {
+		return nil, err
+	}
 
 	c.hub = restream.NewHub()
 	c.hub.Retries = streamRetries
@@ -216,11 +226,17 @@ func (c *Config) maskCredentials(address string) string {
 // Serve the iptv-proxy api
 func (c *Config) Serve() error {
 	srv := &http.Server{
-		Addr:              fmt.Sprintf(":%d", c.HostConfig.Port),
+		Addr:              c.listenAddress(),
 		Handler:           c.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return srv.ListenAndServe()
+}
+
+// listenAddress is the address the proxy listens on: every interface unless
+// one is given.
+func (c *Config) listenAddress() string {
+	return net.JoinHostPort(c.ListenAddress, strconv.Itoa(c.HostConfig.Port))
 }
 
 // xtreamServesPlaylist tells whether the playlist address given to the proxy
@@ -279,19 +295,23 @@ func (c *Config) loadPlaylist(ctx context.Context, source, userAgent string) (*m
 
 // proxify returns the tracks of a playlist the proxy can serve, and the
 // playlist as clients get it: the same lines, each address replaced by the
-// proxy's. A track with an unusable address is dropped from both.
-func (c *Config) proxify(playlist *m3u.Playlist, xtream bool) (*m3u.Playlist, []byte) {
+// proxy's, and nothing else naming the provider. A track the filters leave
+// out, or with an unusable address, is dropped from both.
+func (c *Config) proxify(playlist *m3u.Playlist, fromXtream bool) (*m3u.Playlist, []byte) {
 	kept := &m3u.Playlist{Header: playlist.Header, Tracks: make([]m3u.Track, 0, len(playlist.Tracks))}
-	out := &m3u.Playlist{Header: playlist.Header, Tracks: make([]m3u.Track, 0, len(playlist.Tracks))}
+	out := &m3u.Playlist{Header: c.hideProvider(playlist.Header, fromXtream), Tracks: make([]m3u.Track, 0, len(playlist.Tracks))}
 
 	for _, track := range playlist.Tracks {
-		uri, err := c.replaceURL(track.URI, len(kept.Tracks), xtream)
+		if !c.keepTrack(track) {
+			continue
+		}
+		uri, err := c.replaceURL(track.URI, len(kept.Tracks), fromXtream)
 		if err != nil {
 			log.Printf("[iptv-proxy] ERROR: track %q dropped: invalid address", track.Name())
 			continue
 		}
 		kept.Tracks = append(kept.Tracks, track)
-		proxied := track
+		proxied := c.hideProviderInTrack(track, fromXtream)
 		proxied.URI = uri
 		out.Tracks = append(out.Tracks, proxied)
 	}
