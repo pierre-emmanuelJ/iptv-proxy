@@ -20,7 +20,7 @@ services:
       # Port to expose the IPTVs endpoints
       PORT: 8080
       # Hostname or IP to expose the IPTVs endpoints (for machine not for docker)
-      HOSTNAME: localhost
+      PROXY_HOSTNAME: localhost
       GIN_MODE: release
       ## Xtream-code proxy configuration
       XTREAM_USER: xtream_user
@@ -28,6 +28,6 @@ services:
       XTREAM_BASE_URL: "http://example.tv:8080"
       ##### UNSAFE AUTH TODO ADD REAL AUTH
       #will be used for m3u and xtream auth poxy
-      USER: test
-      PASSWORD: testpassword
+      PROXY_USER: test
+      PROXY_PASSWORD: testpassword
 

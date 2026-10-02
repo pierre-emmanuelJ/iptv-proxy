@@ -18,14 +18,14 @@ services:
       M3U_URL: /root/iptv/iptv.m3u
       PORT: 8080
       ADVERTISED_PORT: 443
-      HOSTNAME: iptv.proxyexample.xyz
+      PROXY_HOSTNAME: iptv.proxyexample.xyz
       GIN_MODE: release
       HTTPS: 1
       XTREAM_USER: xtream_user
       XTREAM_PASSWORD: xtream_password
       XTREAM_BASE_URL: "http://example.tv:1234"
-      USER: test
-      PASSWORD: testpassword
+      PROXY_USER: test
+      PROXY_PASSWORD: testpassword
 
   traefik:
     restart: always

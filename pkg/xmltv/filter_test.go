@@ -1,0 +1,130 @@
+package xmltv
+
+import (
+	"bytes"
+	"errors"
+	"io"
+	"strings"
+	"testing"
+	"testing/iotest"
+)
+
+const guide = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE tv SYSTEM "xmltv.dtd">
+<tv generator-info-name="provider">
+  <!-- <channel id="commented"> is not a channel -->
+  <channel id="one.fr">
+    <display-name>One &amp; Co</display-name>
+    <icon src="http://logos.example/one.png"/>
+  </channel>
+  <channel id='two.fr'><display-name>Two</display-name></channel>
+  <channel id="a&amp;b"/>
+  <channelx id="not.a.channel"/>
+  <programme start="20251002200000 +0200" stop="20251002210000 +0200" channel="one.fr">
+    <title lang="fr">News at "8" &gt; 7</title>
+    <desc><![CDATA[a </programme> that is not one]]></desc>
+  </programme>
+  <programme channel="two.fr" start="20251002200000 +0200"
+      stop="20251002210000 +0200"><title>Two's show</title></programme  >
+  <programme start="20251002210000 +0200" channel="one.fr"><title>Late</title></programme>
+</tv>
+`
+
+func filter(t *testing.T, doc string, keep func(string) bool) string {
+	t.Helper()
+	var out bytes.Buffer
+	if err := Filter(&out, strings.NewReader(doc), keep); err != nil {
+		t.Fatal(err)
+	}
+	return out.String()
+}
+
+func TestKeepingEverythingChangesNothing(t *testing.T) {
+	if got := filter(t, guide, func(string) bool { return true }); got != guide {
+		t.Errorf("got:\n%s", got)
+	}
+	// read a byte at a time: element boundaries fall anywhere
+	var out bytes.Buffer
+	if err := Filter(&out, iotest.OneByteReader(strings.NewReader(guide)), func(string) bool { return true }); err != nil || out.String() != guide {
+		t.Errorf("one byte at a time: %v\n%s", err, out.String())
+	}
+}
+
+func TestChannelsLeftOut(t *testing.T) {
+	var asked []string
+	got := filter(t, guide, func(channel string) bool {
+		asked = append(asked, channel)
+		return channel == "two.fr" || channel == "a&b"
+	})
+	want := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE tv SYSTEM "xmltv.dtd">
+<tv generator-info-name="provider">
+  <!-- <channel id="commented"> is not a channel -->
+  <channel id='two.fr'><display-name>Two</display-name></channel>
+  <channel id="a&amp;b"/>
+  <channelx id="not.a.channel"/>
+  <programme channel="two.fr" start="20251002200000 +0200"
+      stop="20251002210000 +0200"><title>Two's show</title></programme  >
+  </tv>
+`
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+	if strings.Join(asked, ",") != "one.fr,two.fr,a&b,one.fr,two.fr,one.fr" {
+		t.Errorf("channels asked about: %q", asked)
+	}
+}
+
+func TestElementWithoutItsChannel(t *testing.T) {
+	got := filter(t, `<tv><programme start="1"><title>x</title></programme></tv>`, func(c string) bool { return c != "" })
+	if got != `<tv></tv>` {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestTruncatedGuide(t *testing.T) {
+	for _, doc := range []string{
+		`<tv><channel id="a"><display-name>A`,
+		`<tv><channel id="a`,
+		`<tv><programme channel="a"><title>x</title></programm`,
+	} {
+		err := Filter(io.Discard, strings.NewReader(doc), func(string) bool { return true })
+		if !errors.Is(err, io.ErrUnexpectedEOF) {
+			t.Errorf("%q: err = %v, want io.ErrUnexpectedEOF", doc, err)
+		}
+	}
+}
+
+func TestElementTooLarge(t *testing.T) {
+	doc := `<tv><channel id="a"><icon src="data:` + strings.Repeat("A", maxElement) + `"/></channel></tv>`
+	if err := Filter(io.Discard, strings.NewReader(doc), func(string) bool { return true }); !errors.Is(err, ErrElementTooLarge) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("client gone") }
+
+func TestClientGone(t *testing.T) {
+	big := strings.Repeat(guide, 2000)
+	if err := Filter(failingWriter{}, strings.NewReader(big), func(string) bool { return true }); err == nil {
+		t.Error("a failing writer must stop the filter")
+	}
+}
+
+func FuzzFilter(f *testing.F) {
+	f.Add(guide)
+	f.Add(`<tv><channel id="a"/><programme channel="b">x</programme></tv>`)
+	f.Add(`<channel<channel id="a">`)
+	f.Fuzz(func(t *testing.T, doc string) {
+		var all bytes.Buffer
+		if err := Filter(&all, strings.NewReader(doc), func(string) bool { return true }); err == nil && all.String() != doc {
+			t.Fatalf("keeping everything changed the guide:\n%q\n%q", doc, all.String())
+		}
+		var none bytes.Buffer
+		if err := Filter(&none, strings.NewReader(doc), func(string) bool { return false }); err == nil && none.Len() > len(doc) {
+			t.Fatalf("leaving channels out made the guide larger:\n%q\n%q", doc, none.String())
+		}
+	})
+}

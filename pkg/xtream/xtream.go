@@ -45,6 +45,9 @@ type Account struct {
 // "<user>/<password>/<id>" for its streams ("" being the live short form).
 var StreamPrefixes = []string{"", "live/", "movie/", "series/", "timeshift/"}
 
+// APIEndpoints are the endpoints of the Xtream client API the proxy serves.
+var APIEndpoints = []string{"player_api.php", "get.php", "xmltv.php"}
+
 // APIURL builds the address of an endpoint ("player_api.php", "get.php",
 // "xmltv.php") on the account, with its credentials and the given parameters.
 // Any "username" or "password" in params is ignored.
@@ -101,6 +104,10 @@ func Sanitize(body []byte, provider, proxy Account) []byte {
 			add(strings.TrimRight(provider.BaseURL, "/")+"/"+prefix+from[1:], strings.TrimRight(proxy.BaseURL, "/")+"/"+prefix+to[1:])
 		}
 		add(from, to)
+	}
+	// The provider's API (a guide address, typically) is the proxy's.
+	for _, endpoint := range APIEndpoints {
+		add(strings.TrimRight(provider.BaseURL, "/")+"/"+endpoint, strings.TrimRight(proxy.BaseURL, "/")+"/"+endpoint)
 	}
 	// Query parameters, in any order and whatever sits between them.
 	add("password="+url.QueryEscape(provider.Password), "password="+url.QueryEscape(proxy.Password))
@@ -263,6 +270,77 @@ func DecodeList(body []byte) ([]map[string]any, error) {
 		}
 	}
 	return items, nil
+}
+
+// FilterList keeps the entries of a provider list (categories, streams) that
+// keep accepts. Each kept entry is written exactly as the provider wrote it,
+// and a list written as an object keyed by index stays one. An entry that is
+// not an object is kept. What is not a list ("null", an error object) is
+// returned as it is.
+func FilterList(body []byte, keep func(entry map[string]any) bool) ([]byte, error) {
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.UseNumber()
+	start, err := dec.Token()
+	if err != nil {
+		return nil, fmt.Errorf("decoding provider list: %w", err)
+	}
+	open, isDelim := start.(json.Delim)
+	if !isDelim || (open != '[' && open != '{') {
+		return body, nil
+	}
+
+	accept := func(raw json.RawMessage) bool {
+		var entry map[string]any
+		d := json.NewDecoder(bytes.NewReader(raw))
+		d.UseNumber()
+		if d.Decode(&entry) != nil || entry == nil {
+			return true
+		}
+		return keep(entry)
+	}
+
+	var out bytes.Buffer
+	out.WriteByte(byte(open))
+	first := true
+	for dec.More() {
+		var key string
+		if open == '{' {
+			k, err := dec.Token()
+			if err != nil {
+				return nil, fmt.Errorf("decoding provider list: %w", err)
+			}
+			key, _ = k.(string)
+		}
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			return nil, fmt.Errorf("decoding provider list: %w", err)
+		}
+		if key == "user_info" || key == "server_info" {
+			return body, nil // a login answer, not a list
+		}
+		if !accept(raw) {
+			continue
+		}
+		if !first {
+			out.WriteByte(',')
+		}
+		first = false
+		if open == '{' {
+			name, _ := json.Marshal(key)
+			out.Write(name)
+			out.WriteByte(':')
+		}
+		out.Write(raw)
+	}
+	if _, err := dec.Token(); err != nil {
+		return nil, fmt.Errorf("decoding provider list: %w", err)
+	}
+	if open == '[' {
+		out.WriteByte(']')
+	} else {
+		out.WriteByte('}')
+	}
+	return out.Bytes(), nil
 }
 
 func sortNumeric(keys []string) {

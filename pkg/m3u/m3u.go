@@ -26,12 +26,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 )
 
 const (
 	header    = "#EXTM3U"
 	extInf    = "#EXTINF"
+	extGrp    = "#EXTGRP:"
 	utf8BOM   = "\xEF\xBB\xBF"
 	lineLimit = 16 << 20 // some providers inline logos as base64
 )
@@ -65,6 +67,85 @@ func (t Track) Name() string {
 		}
 	}
 	return ""
+}
+
+// Group is the group of the track: its group-title attribute, else its
+// #EXTGRP line.
+func (t Track) Group() string {
+	if group, ok := Attribute(t.ExtInf, "group-title"); ok {
+		return group
+	}
+	for _, extra := range t.Extra {
+		if strings.HasPrefix(extra, extGrp) {
+			return strings.TrimSpace(strings.TrimPrefix(extra, extGrp))
+		}
+	}
+	return ""
+}
+
+// attribute is a name="value" attribute of an #EXTM3U or #EXTINF line.
+var attribute = regexp.MustCompile(`([A-Za-z0-9_.:-]+)="([^"]*)"`)
+
+// attributes returns where the attributes of a line may be: the whole
+// #EXTM3U line, and an #EXTINF line up to its display name.
+func attributes(line string) string {
+	if !strings.HasPrefix(line, extInf) {
+		return line
+	}
+	quoted := false
+	for i, r := range line {
+		switch r {
+		case '"':
+			quoted = !quoted
+		case ',':
+			if !quoted {
+				return line[:i]
+			}
+		}
+	}
+	return line
+}
+
+// Attribute returns the value of an attribute of an #EXTM3U or #EXTINF line.
+func Attribute(line, name string) (string, bool) {
+	for _, m := range attribute.FindAllStringSubmatch(attributes(line), -1) {
+		if m[1] == name {
+			return m[2], true
+		}
+	}
+	return "", false
+}
+
+// EditAttributes calls edit for each attribute of an #EXTM3U or #EXTINF line
+// and returns the line with the values it gives. An attribute edit does not
+// keep is removed. The rest of the line is kept as it is.
+func EditAttributes(line string, edit func(name, value string) (string, bool)) string {
+	region := attributes(line)
+	matches := attribute.FindAllStringSubmatchIndex(region, -1)
+	if len(matches) == 0 {
+		return line
+	}
+
+	var b strings.Builder
+	last := 0
+	for _, m := range matches {
+		name, value := region[m[2]:m[3]], region[m[4]:m[5]]
+		newValue, keep := edit(name, value)
+		switch {
+		case !keep:
+			// the attribute goes with the blank before it
+			b.WriteString(strings.TrimRight(region[last:m[0]], " \t"))
+		case newValue != value:
+			b.WriteString(region[last:m[4]])
+			b.WriteString(strings.ReplaceAll(newValue, `"`, "'"))
+			b.WriteString(region[m[5]:m[1]])
+		default:
+			b.WriteString(region[last:m[1]])
+		}
+		last = m[1]
+	}
+	b.WriteString(line[last:])
+	return b.String()
 }
 
 // Playlist is an extended M3U playlist.

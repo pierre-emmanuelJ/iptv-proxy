@@ -20,6 +20,8 @@ package config
 
 import (
 	"net/url"
+
+	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/filter"
 )
 
 // CredentialString represents an iptv-proxy credential.
@@ -66,4 +68,9 @@ type ProxyConfig struct {
 	// NoStreamSharing gives every client its own connection to the provider
 	// for a live stream, instead of one connection per stream.
 	NoStreamSharing bool
+	// Filter keeps the channels clients see, by group and by name.
+	Filter filter.Patterns
+	// ListenAddress is the address the proxy listens on; empty means every
+	// interface.
+	ListenAddress string
 }

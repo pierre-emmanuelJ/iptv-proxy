@@ -3,9 +3,12 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/viper"
+
+	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/filter"
 )
 
 // load reads the configuration the way the command does at startup.
@@ -16,7 +19,7 @@ func load(t *testing.T, env map[string]string) {
 		t.Setenv("HOME", t.TempDir())
 	}
 	t.Chdir(t.TempDir())
-	for _, name := range []string{"USER", "PASSWORD", "HOSTNAME", "PROXY_USER", "PROXY_PASSWORD", "PROXY_HOSTNAME", "PORT", "M3U_URL", "XTREAM_USER", "XTREAM_PASSWORD", "XTREAM_BASE_URL", "ADVERTISED_PORT", "HTTPS", "USER_AGENT", "XTREAM_API_GET", "XTREAM_API_GET_MOVIES", "NO_STREAM_SHARING"} {
+	for _, name := range []string{"USER", "PASSWORD", "HOSTNAME", "PROXY_USER", "PROXY_PASSWORD", "PROXY_HOSTNAME", "PORT", "M3U_URL", "XTREAM_USER", "XTREAM_PASSWORD", "XTREAM_BASE_URL", "ADVERTISED_PORT", "HTTPS", "USER_AGENT", "XTREAM_API_GET", "XTREAM_API_GET_MOVIES", "NO_STREAM_SHARING", "GROUP_REGEX", "CHANNEL_REGEX", "GROUP_EXCLUDE_REGEX", "CHANNEL_EXCLUDE_REGEX", "LISTEN_ADDRESS"} {
 		t.Setenv(name, "")
 		os.Unsetenv(name) // nolint: errcheck
 	}
@@ -185,5 +188,61 @@ func TestProxyConfigPlainPlaylist(t *testing.T) {
 	load(t, map[string]string{"M3U_URL": "http://[broken"})
 	if _, err := proxyConfig(rootCmd); err == nil {
 		t.Error("an invalid playlist address is refused")
+	}
+}
+
+func TestProxyConfigFilters(t *testing.T) {
+	load(t, map[string]string{
+		"GROUP_REGEX":           "^FR ",
+		"CHANNEL_REGEX":         "HD",
+		"GROUP_EXCLUDE_REGEX":   "(?i)adult",
+		"CHANNEL_EXCLUDE_REGEX": "Backup",
+		"LISTEN_ADDRESS":        "192.168.1.10",
+	})
+	conf, err := proxyConfig(rootCmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filter.Patterns{Group: "^FR ", Channel: "HD", GroupExclude: "(?i)adult", ChannelExclude: "Backup"}
+	if conf.Filter != want {
+		t.Errorf("filters = %+v, want %+v", conf.Filter, want)
+	}
+	if conf.ListenAddress != "192.168.1.10" {
+		t.Errorf("listen address = %q", conf.ListenAddress)
+	}
+
+	load(t, map[string]string{"CHANNEL_EXCLUDE_REGEX": "(unclosed"})
+	if _, err := proxyConfig(rootCmd); err == nil || !strings.Contains(err.Error(), "--channel-exclude-regex") {
+		t.Errorf("an invalid expression: err = %v", err)
+	}
+}
+
+// USER and HOSTNAME set by the system do not override the configuration
+// file (#113); PROXY_ names and flags still do.
+func TestConfigurationFileWinsOverTheSystemsVariables(t *testing.T) {
+	home := t.TempDir()
+	if err := os.WriteFile(filepath.Join(home, ".iptv-proxy.yaml"), []byte("hostname: tv.example\nuser: fileuser\npassword: filepass\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	load(t, map[string]string{"HOME": home, "HOSTNAME": "3f2a9c1d7b21", "USER": "ubuntu", "PASSWORD": "system"})
+	for option, want := range map[string]string{"hostname": "tv.example", "user": "fileuser", "password": "filepass"} {
+		if got := setting(rootCmd, option); got != want {
+			t.Errorf("%s = %q, want the file's %q", option, got, want)
+		}
+	}
+
+	load(t, map[string]string{"HOME": home, "HOSTNAME": "3f2a9c1d7b21", "PROXY_HOSTNAME": "env.example"})
+	if got := setting(rootCmd, "hostname"); got != "env.example" {
+		t.Errorf("hostname = %q, want PROXY_HOSTNAME's", got)
+	}
+
+	// an option the file does not set still comes from the old name
+	if err := os.WriteFile(filepath.Join(home, ".iptv-proxy.yaml"), []byte("port: 9000\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	load(t, map[string]string{"HOME": home, "USER": "old"})
+	if got := setting(rootCmd, "user"); got != "old" {
+		t.Errorf("user = %q, want USER's", got)
 	}
 }

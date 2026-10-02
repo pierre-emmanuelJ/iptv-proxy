@@ -1,6 +1,7 @@
 package server
 
 import (
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
@@ -222,8 +223,8 @@ func newProvider(t *testing.T) *provider {
 			fmt.Fprintf(w, `<html>No %s/%s for you</html>`, xUser, xPass)
 			return
 		}
-		fmt.Fprintf(w, "#EXTM3U\n"+
-			"#EXTINF:-1 tvg-id=\"\" tvg-name=\"One\" group-title=\"News\",One\n%[1]s/live/xuser/xpass/1.ts\n"+
+		fmt.Fprintf(w, "#EXTM3U url-tvg=\"%[1]s/xmltv.php?username=xuser&password=xpass\"\n"+
+			"#EXTINF:-1 tvg-id=\"\" tvg-name=\"One\" group-title=\"News\" catchup=\"default\" catchup-source=\"%[1]s/timeshift/xuser/xpass/{duration}/{start}/1.ts\",One\n%[1]s/live/xuser/xpass/1.ts\n"+
 			"#EXTINF:-1 tvg-id=\"film.fr\",A film, with a comma\n%[1]s/movie/xuser/xpass/12.mkv\n", p.URL)
 	})
 
@@ -237,8 +238,16 @@ func newProvider(t *testing.T) *provider {
 			return
 		}
 		time.Sleep(p.guideDelay) // a large guide takes a while to generate
+		if r.URL.Query().Get("gzip") != "" {
+			// a guide some providers send compressed, unasked
+			w.Header().Set("Content-Type", "application/gzip")
+			zw := gzip.NewWriter(w)
+			fmt.Fprint(zw, providerGuide)
+			zw.Close() // nolint: errcheck
+			return
+		}
 		w.Header().Set("Content-Type", "text/xml")
-		fmt.Fprint(w, `<?xml version="1.0"?><tv><channel id="one.fr"/></tv>`)
+		fmt.Fprint(w, providerGuide)
 	})
 
 	mux.HandleFunc("/live/xuser/xpass/1.ts", func(w http.ResponseWriter, r *http.Request) {
@@ -343,6 +352,17 @@ func newProvider(t *testing.T) *provider {
 		close(p.streamClosed)
 	})
 
+	// A plain M3U playlist naming its provider's credentials outside of the
+	// track addresses.
+	mux.HandleFunc("/leaky.m3u", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		fmt.Fprintf(w, "#EXTM3U url-tvg=\"%[1]s/epg.php?username=xuser&password=xpass\" x-tvg-url=\"http://guide.example/epg.xml\"\n"+
+			"#EXTINF:-1 tvg-logo=\"http://logos.example/one.png\" catchup-source=\"%[1]s/catchup/xuser/xpass/{start}.ts\" group-title=\"News\",One\n"+
+			"#EXTVLCOPT:http-referrer=%[1]s/portal?password=xpass\n"+
+			"#EXTVLCOPT:http-user-agent=Player\n"+
+			"%[1]s/stream/a.ts\n", p.URL)
+	})
+
 	// Plain M3U provider
 	mux.HandleFunc("/list.m3u", func(w http.ResponseWriter, r *http.Request) {
 		p.hit(r)
@@ -375,6 +395,17 @@ func newProvider(t *testing.T) *provider {
 	t.Cleanup(p.Close)
 	return p
 }
+
+// providerGuide is the provider's guide: two channels, their programmes,
+// and markup in a description.
+const providerGuide = `<?xml version="1.0" encoding="UTF-8"?>
+<tv generator-info-name="provider">
+  <channel id="one.fr"><display-name>One</display-name></channel>
+  <channel id="sport.fr"><display-name>Sport</display-name></channel>
+  <programme start="20251002200000 +0200" channel="one.fr"><title>News</title><desc><![CDATA[<b>live</b>]]></desc></programme>
+  <programme start="20251002200000 +0200" channel="sport.fr"><title>Match</title></programme>
+</tv>
+`
 
 // proxy starts the proxy in front of p and returns its address.
 func proxy(t *testing.T, p *provider, mutate func(*config.ProxyConfig)) string {
@@ -655,8 +686,9 @@ func TestGetPhpPlaylist(t *testing.T) {
 	base := proxy(t, p, nil)
 
 	resp, body := get(t, base+"/get.php?"+creds+"&type=m3u_plus&output=ts")
-	want := "#EXTM3U\n" +
-		"#EXTINF:-1 tvg-id=\"\" tvg-name=\"One\" group-title=\"News\",One\nhttp://proxy.example:8080/live/me/secret/1.ts\n" +
+	// the guide and catch-up addresses are the proxy's too
+	want := "#EXTM3U url-tvg=\"http://proxy.example:8080/xmltv.php?username=me&password=secret\"\n" +
+		"#EXTINF:-1 tvg-id=\"\" tvg-name=\"One\" group-title=\"News\" catchup=\"default\" catchup-source=\"http://proxy.example:8080/timeshift/me/secret/{duration}/{start}/1.ts\",One\nhttp://proxy.example:8080/live/me/secret/1.ts\n" +
 		"#EXTINF:-1 tvg-id=\"film.fr\",A film, with a comma\nhttp://proxy.example:8080/movie/me/secret/12.mkv\n"
 	if resp.StatusCode != http.StatusOK || body != want {
 		t.Fatalf("status %d, playlist:\n%s\nwant:\n%s", resp.StatusCode, body, want)
@@ -787,7 +819,7 @@ func TestGuideIsPassedOn(t *testing.T) {
 	base := proxy(t, p, nil)
 
 	resp, body := get(t, base+"/xmltv.php?"+creds)
-	if resp.StatusCode != http.StatusOK || body != `<?xml version="1.0"?><tv><channel id="one.fr"/></tv>` {
+	if resp.StatusCode != http.StatusOK || body != providerGuide {
 		t.Errorf("status %d, guide: %s", resp.StatusCode, body)
 	}
 	if ct := resp.Header.Get("Content-Type"); ct != "text/xml" {
@@ -806,7 +838,7 @@ func TestProviderSlowToAnswer(t *testing.T) {
 	p.guideDelay = 400 * time.Millisecond
 	base := proxy(t, p, nil)
 
-	if resp, body := get(t, base+"/xmltv.php?"+creds); resp.StatusCode != http.StatusOK || !strings.Contains(body, "<tv>") {
+	if resp, body := get(t, base+"/xmltv.php?"+creds); resp.StatusCode != http.StatusOK || body != providerGuide {
 		t.Errorf("slow guide: status %d, body %q", resp.StatusCode, body)
 	}
 	if resp, _ := get(t, base+"/live/me/secret/slow.ts"); resp.StatusCode != http.StatusBadGateway {
