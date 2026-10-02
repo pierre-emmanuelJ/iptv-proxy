@@ -33,7 +33,7 @@
   routes, which hold the proxy's user and password. `GIN_MODE=debug` brings
   it back.
 
-## 3.9.0 (unreleased)
+## 3.9.0
 
 ### Fixed
 
