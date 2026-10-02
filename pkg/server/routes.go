@@ -41,18 +41,31 @@ func (c *Config) routes(r *gin.RouterGroup) {
 
 			return
 		}
+		if c.RemoteURL == nil || c.RemoteURL.String() == "" {
+			// An Xtream account and no playlist of its own: the playlist is
+			// the account's, under the usual name too.
+			r.GET("/"+c.M3UFileName, c.authenticate, c.xtreamPlaylist())
+			r.POST("/"+c.M3UFileName, c.authenticate, c.xtreamPlaylist())
+
+			return
+		}
 	}
 
 	c.m3uRoutes(r)
 }
 
-func (c *Config) xtreamRoutes(r *gin.RouterGroup) {
-	getphp := gin.HandlerFunc(c.xtreamGet)
+// xtreamPlaylist serves the account's playlist: the provider's get.php, or
+// one generated from its API when asked so.
+func (c *Config) xtreamPlaylist() gin.HandlerFunc {
 	if c.XtreamGenerateApiGet {
-		getphp = c.xtreamApiGet
+		return c.xtreamApiGet
 	}
-	r.GET("/get.php", c.authenticate, getphp)
-	r.POST("/get.php", c.authenticate, getphp)
+	return c.xtreamGet
+}
+
+func (c *Config) xtreamRoutes(r *gin.RouterGroup) {
+	r.GET("/get.php", c.authenticate, c.xtreamPlaylist())
+	r.POST("/get.php", c.authenticate, c.xtreamPlaylist())
 	r.GET("/apiget", c.authenticate, c.xtreamApiGet)
 	r.GET("/player_api.php", c.authenticate, c.xtreamPlayerAPI)
 	r.POST("/player_api.php", c.authenticate, c.xtreamPlayerAPI)
