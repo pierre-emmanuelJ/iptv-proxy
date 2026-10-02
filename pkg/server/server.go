@@ -20,124 +20,235 @@ package server
 
 import (
 	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
+	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-contrib/cors"
-	"github.com/jamesnetherton/m3u"
-	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/config"
-	uuid "github.com/satori/go.uuid"
-
 	"github.com/gin-gonic/gin"
+
+	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/config"
+	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/m3u"
+	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/xtream"
 )
 
-var defaultProxyfiedM3UPath = filepath.Join(os.TempDir(), uuid.NewV4().String()+".iptv-proxy.m3u")
-var endpointAntiColision = strings.Split(uuid.NewV4().String(), "-")[0]
+const (
+	// defaultUserAgent is used when the proxy talks to a provider on its own
+	// (no client request to take one from). Providers commonly refuse Go's.
+	defaultUserAgent = "VLC/3.0.20 LibVLC/3.0.20"
+
+	playlistFetchTimeout = 2 * time.Minute
+	connectTimeout       = 15 * time.Second
+	// A provider has this long to start answering; a stream then lasts as
+	// long as it has to.
+	responseHeaderTimeout = 30 * time.Second
+)
 
 // Config represent the server configuration
 type Config struct {
 	*config.ProxyConfig
 
-	// M3U service part
-	playlist *m3u.Playlist
-	// this variable is set only for m3u proxy endpoints
-	track *m3u.Track
-	// path to the proxyfied m3u file
-	proxyfiedM3UPath string
+	// M3U service part: the provider's playlist (tracks the proxy can
+	// serve), and the same playlist pointing at the proxy.
+	playlist     *m3u.Playlist
+	proxyfiedM3U []byte
 
 	endpointAntiColision string
+
+	// client follows redirects, noRedirect hands them back.
+	client     *http.Client
+	noRedirect *http.Client
+
+	m3uCacheLock sync.Mutex
+	m3uCache     map[string]cachedM3U
+
+	hlsRedirectsLock sync.RWMutex
+	hlsRedirects     map[string]url.URL
+}
+
+type cachedM3U struct {
+	body []byte
+	at   time.Time
 }
 
 // NewServer initialize a new server configuration
 func NewServer(config *config.ProxyConfig) (*Config, error) {
-	var p m3u.Playlist
-	if config.RemoteURL.String() != "" {
-		var err error
-		p, err = m3u.Parse(config.RemoteURL.String())
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: connectTimeout, KeepAlive: 30 * time.Second}).DialContext,
+		TLSHandshakeTimeout:   connectTimeout,
+		ResponseHeaderTimeout: responseHeaderTimeout,
+		MaxIdleConnsPerHost:   16,
+		IdleConnTimeout:       90 * time.Second,
+		// Media is passed on as the provider sends it.
+		DisableCompression: true,
+	}
+
+	c := &Config{
+		ProxyConfig:          config,
+		playlist:             &m3u.Playlist{},
+		endpointAntiColision: strings.Trim(config.CustomId, "/"),
+		client:               &http.Client{Transport: transport},
+		noRedirect: &http.Client{
+			Transport: transport,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+		m3uCache:     map[string]cachedM3U{},
+		hlsRedirects: map[string]url.URL{},
+	}
+	if c.endpointAntiColision == "" {
+		id := make([]byte, 4)
+		if _, err := rand.Read(id); err != nil {
+			return nil, err
+		}
+		c.endpointAntiColision = hex.EncodeToString(id)
+	}
+
+	// With an Xtream provider the playlist is asked for when a client wants
+	// it: nothing to download before starting.
+	if c.RemoteURL != nil && c.RemoteURL.String() != "" && !c.xtreamServesPlaylist() {
+		ctx, cancel := context.WithTimeout(context.Background(), playlistFetchTimeout)
+		defer cancel()
+		playlist, err := c.loadPlaylist(ctx, c.RemoteURL.String(), c.upstreamUserAgent(""))
 		if err != nil {
 			return nil, err
 		}
+		c.playlist, c.proxyfiedM3U = c.proxify(playlist, false)
 	}
 
-        if trimmedCustomId := strings.Trim(config.CustomId, "/"); trimmedCustomId != "" {
-                endpointAntiColision = trimmedCustomId
-        }
+	return c, nil
+}
 
-	return &Config{
-		config,
-		&p,
-		nil,
-		defaultProxyfiedM3UPath,
-		endpointAntiColision,
-	}, nil
+// Handler is the proxy's HTTP API.
+func (c *Config) Handler() http.Handler {
+	router := gin.New()
+	router.Use(gin.Logger(), gin.Recovery(), cors.Default())
+	c.routes(router.Group("/"))
+	return router
 }
 
 // Serve the iptv-proxy api
 func (c *Config) Serve() error {
-	if err := c.playlistInitialization(); err != nil {
-		return err
+	srv := &http.Server{
+		Addr:              fmt.Sprintf(":%d", c.HostConfig.Port),
+		Handler:           c.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
 	}
-
-	router := gin.Default()
-	router.Use(cors.Default())
-	group := router.Group("/")
-	c.routes(group)
-
-	return router.Run(fmt.Sprintf(":%d", c.HostConfig.Port))
+	return srv.ListenAndServe()
 }
 
-func (c *Config) playlistInitialization() error {
-	if len(c.playlist.Tracks) == 0 {
-		return nil
+// xtreamServesPlaylist tells whether the playlist address given to the proxy
+// is the get.php of its Xtream provider: the playlist is then one more Xtream
+// endpoint.
+func (c *Config) xtreamServesPlaylist() bool {
+	if c.XtreamBaseURL == "" || c.RemoteURL == nil || c.RemoteURL.Host == "" {
+		return false
 	}
-
-	f, err := os.Create(c.proxyfiedM3UPath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	return c.marshallInto(f, false)
+	return strings.Contains(c.XtreamBaseURL, c.RemoteURL.Host) &&
+		c.XtreamUser.String() == c.RemoteURL.Query().Get("username") &&
+		c.XtreamPassword.String() == c.RemoteURL.Query().Get("password")
 }
 
-// MarshallInto a *bufio.Writer a Playlist.
-func (c *Config) marshallInto(into *os.File, xtream bool) error {
-	filteredTrack := make([]m3u.Track, 0, len(c.playlist.Tracks))
+// upstreamUserAgent is the User-Agent sent to the provider: the configured
+// one, else the client's, else a player's.
+func (c *Config) upstreamUserAgent(client string) string {
+	switch {
+	case c.UserAgent != "":
+		return c.UserAgent
+	case client != "":
+		return client
+	default:
+		return defaultUserAgent
+	}
+}
 
-	ret := 0
-	into.WriteString("#EXTM3U\n") // nolint: errcheck
-	for i, track := range c.playlist.Tracks {
-		var buffer bytes.Buffer
-
-		buffer.WriteString("#EXTINF:")                       // nolint: errcheck
-		buffer.WriteString(fmt.Sprintf("%d ", track.Length)) // nolint: errcheck
-		for i := range track.Tags {
-			if i == len(track.Tags)-1 {
-				buffer.WriteString(fmt.Sprintf("%s=%q", track.Tags[i].Name, track.Tags[i].Value)) // nolint: errcheck
-				continue
-			}
-			buffer.WriteString(fmt.Sprintf("%s=%q ", track.Tags[i].Name, track.Tags[i].Value)) // nolint: errcheck
-		}
-
-		uri, err := c.replaceURL(track.URI, i-ret, xtream)
+// loadPlaylist reads a playlist from an http(s) address or a local file.
+func (c *Config) loadPlaylist(ctx context.Context, source, userAgent string) (*m3u.Playlist, error) {
+	if !strings.HasPrefix(source, "http://") && !strings.HasPrefix(source, "https://") {
+		f, err := os.Open(source)
 		if err != nil {
-			ret++
-			log.Printf("ERROR: track: %s: %s", track.Name, err)
+			return nil, fmt.Errorf("unable to open playlist file: %w", err)
+		}
+		defer f.Close() // nolint: errcheck
+		return m3u.Parse(f)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
+	if err != nil {
+		return nil, errors.New("invalid playlist address")
+	}
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get the playlist: %w", withoutURL(err))
+	}
+	defer resp.Body.Close() // nolint: errcheck
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, fmt.Errorf("unable to get the playlist: the provider answered %s", resp.Status)
+	}
+	return m3u.Parse(resp.Body)
+}
+
+// proxify returns the tracks of a playlist the proxy can serve, and the
+// playlist as clients get it: the same lines, each address replaced by the
+// proxy's. A track with an unusable address is dropped from both.
+func (c *Config) proxify(playlist *m3u.Playlist, xtream bool) (*m3u.Playlist, []byte) {
+	kept := &m3u.Playlist{Header: playlist.Header, Tracks: make([]m3u.Track, 0, len(playlist.Tracks))}
+	out := &m3u.Playlist{Header: playlist.Header, Tracks: make([]m3u.Track, 0, len(playlist.Tracks))}
+
+	for _, track := range playlist.Tracks {
+		uri, err := c.replaceURL(track.URI, len(kept.Tracks), xtream)
+		if err != nil {
+			log.Printf("[iptv-proxy] ERROR: track %q dropped: invalid address", track.Name())
 			continue
 		}
-
-		into.WriteString(fmt.Sprintf("%s, %s\n%s\n", buffer.String(), track.Name, uri)) // nolint: errcheck
-
-		filteredTrack = append(filteredTrack, track)
+		kept.Tracks = append(kept.Tracks, track)
+		proxied := track
+		proxied.URI = uri
+		out.Tracks = append(out.Tracks, proxied)
 	}
-	c.playlist.Tracks = filteredTrack
 
-	return into.Sync()
+	var buf bytes.Buffer
+	_, _ = out.WriteTo(&buf) // a bytes.Buffer does not fail
+	return kept, buf.Bytes()
+}
+
+// proxyBaseURL is the address clients reach the proxy at.
+func (c *Config) proxyBaseURL() string {
+	protocol := "http"
+	if c.HTTPS {
+		protocol = "https"
+	}
+
+	customEnd := strings.Trim(c.CustomEndpoint, "/")
+	if customEnd != "" {
+		customEnd = "/" + customEnd
+	}
+
+	return fmt.Sprintf("%s://%s:%d%s", protocol, c.HostConfig.Hostname, c.AdvertisedPort, customEnd)
+}
+
+func (c *Config) providerAccount() xtream.Account {
+	return xtream.Account{BaseURL: c.XtreamBaseURL, User: c.XtreamUser.String(), Password: c.XtreamPassword.String()}
+}
+
+func (c *Config) proxyAccount() xtream.Account {
+	return xtream.Account{BaseURL: c.proxyBaseURL(), User: c.User.String(), Password: c.Password.String()}
 }
 
 // ReplaceURL replace original playlist url by proxy url
@@ -147,43 +258,38 @@ func (c *Config) replaceURL(uri string, trackIndex int, xtream bool) (string, er
 		return "", err
 	}
 
-	protocol := "http"
-	if c.HTTPS {
-		protocol = "https"
-	}
-
-	customEnd := strings.Trim(c.CustomEndpoint, "/")
-	if customEnd != "" {
-		customEnd = fmt.Sprintf("/%s", customEnd)
-	}
-
 	uriPath := oriURL.EscapedPath()
 	if xtream {
-		uriPath = strings.ReplaceAll(uriPath, c.XtreamUser.PathEscape(), c.User.PathEscape())
-		uriPath = strings.ReplaceAll(uriPath, c.XtreamPassword.PathEscape(), c.Password.PathEscape())
+		uriPath = strings.Replace(
+			uriPath,
+			"/"+c.XtreamUser.PathEscape()+"/"+c.XtreamPassword.PathEscape()+"/",
+			"/"+c.User.PathEscape()+"/"+c.Password.PathEscape()+"/",
+			1,
+		)
 	} else {
 		uriPath = path.Join("/", c.endpointAntiColision, c.User.PathEscape(), c.Password.PathEscape(), fmt.Sprintf("%d", trackIndex), path.Base(uriPath))
 	}
 
-	basicAuth := oriURL.User.String()
-	if basicAuth != "" {
-		basicAuth += "@"
+	base, err := url.Parse(c.proxyBaseURL())
+	if err != nil {
+		return "", err
 	}
+	base.User = oriURL.User
 
-	newURI := fmt.Sprintf(
-		"%s://%s%s:%d%s%s",
-		protocol,
-		basicAuth,
-		c.HostConfig.Hostname,
-		c.AdvertisedPort,
-		customEnd,
-		uriPath,
-	)
-
-	newURL, err := url.Parse(newURI)
+	newURL, err := url.Parse(base.String() + uriPath)
 	if err != nil {
 		return "", err
 	}
 
 	return newURL.String(), nil
+}
+
+// withoutURL drops the address from an http client error: it holds the
+// provider's credentials, and errors end up in logs.
+func withoutURL(err error) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return urlErr.Err
+	}
+	return err
 }

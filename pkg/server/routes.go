@@ -20,7 +20,7 @@ package server
 
 import (
 	"fmt"
-	"path"
+	"net/url"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -29,13 +29,10 @@ import (
 func (c *Config) routes(r *gin.RouterGroup) {
 	r = r.Group(c.CustomEndpoint)
 
-	//Xtream service endopoints
-	if c.ProxyConfig.XtreamBaseURL != "" {
+	// Xtream service endpoints
+	if c.XtreamBaseURL != "" {
 		c.xtreamRoutes(r)
-		if strings.Contains(c.XtreamBaseURL, c.RemoteURL.Host) &&
-			c.XtreamUser.String() == c.RemoteURL.Query().Get("username") &&
-			c.XtreamPassword.String() == c.RemoteURL.Query().Get("password") {
-
+		if c.xtreamServesPlaylist() {
 			r.GET("/"+c.M3UFileName, c.authenticate, c.xtreamGetAuto)
 			// XXX Private need: for external Android app
 			r.POST("/"+c.M3UFileName, c.authenticate, c.xtreamGetAuto)
@@ -55,8 +52,8 @@ func (c *Config) xtreamRoutes(r *gin.RouterGroup) {
 	r.GET("/get.php", c.authenticate, getphp)
 	r.POST("/get.php", c.authenticate, getphp)
 	r.GET("/apiget", c.authenticate, c.xtreamApiGet)
-	r.GET("/player_api.php", c.authenticate, c.xtreamPlayerAPIGET)
-	r.POST("/player_api.php", c.appAuthenticate, c.xtreamPlayerAPIPOST)
+	r.GET("/player_api.php", c.authenticate, c.xtreamPlayerAPI)
+	r.POST("/player_api.php", c.authenticate, c.xtreamPlayerAPI)
 	r.GET("/xmltv.php", c.authenticate, c.xtreamXMLTV)
 	r.GET(fmt.Sprintf("/%s/%s/:id", c.User, c.Password), c.xtreamStreamHandler)
 	r.GET(fmt.Sprintf("/live/%s/%s/:id", c.User, c.Password), c.xtreamStreamLive)
@@ -74,15 +71,18 @@ func (c *Config) m3uRoutes(r *gin.RouterGroup) {
 	r.POST("/"+c.M3UFileName, c.authenticate, c.getM3U)
 
 	for i, track := range c.playlist.Tracks {
-		trackConfig := &Config{
-			ProxyConfig: c.ProxyConfig,
-			track:       &c.playlist.Tracks[i],
+		trackURL, err := url.Parse(track.URI)
+		if err != nil {
+			continue // proxify() only keeps tracks with a valid address
 		}
 
-		if strings.HasSuffix(track.URI, ".m3u8") {
-			r.GET(fmt.Sprintf("/%s/%s/%s/%d/:id", c.endpointAntiColision, c.User, c.Password, i), trackConfig.m3u8ReverseProxy)
+		route := fmt.Sprintf("/%s/%s/%s/%d/:id", c.endpointAntiColision, c.User, c.Password, i)
+		if strings.HasSuffix(trackURL.Path, ".m3u8") {
+			// An HLS playlist names its segments relative to itself: they
+			// are asked for next to it.
+			r.GET(route, c.m3u8ReverseProxy(trackURL))
 		} else {
-			r.GET(fmt.Sprintf("/%s/%s/%s/%d/%s", c.endpointAntiColision, c.User, c.Password, i, path.Base(track.URI)), trackConfig.reverseProxy)
+			r.GET(route, c.reverseProxy(trackURL))
 		}
 	}
 }

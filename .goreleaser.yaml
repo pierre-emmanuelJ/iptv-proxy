@@ -1,3 +1,5 @@
+version: 2
+
 project_name: iptv-proxy
 
 builds:
@@ -5,8 +7,7 @@ builds:
     env:
       - CGO_ENABLED=0
     flags:
-      - -mod=vendor
-      - -a
+      - -trimpath
     goos:
       - windows
       - darwin
@@ -20,7 +21,7 @@ archives:
   -
    format_overrides:
      - goos: windows
-       format: zip
+       formats: [zip]
 
 release:
   github:

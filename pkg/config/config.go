@@ -56,4 +56,7 @@ type ProxyConfig struct {
 	AdvertisedPort       int
 	HTTPS                bool
 	User, Password       CredentialString
+	// UserAgent, when set, replaces the client's on every request to the
+	// provider.
+	UserAgent string
 }

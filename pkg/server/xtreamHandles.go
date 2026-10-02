@@ -21,64 +21,79 @@ package server
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jamesnetherton/m3u"
-	xtreamapi "github.com/pierre-emmanuelJ/iptv-proxy/pkg/xtream-proxy"
-	uuid "github.com/satori/go.uuid"
+
+	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/m3u"
+	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/xtream"
 )
 
-type cacheMeta struct {
-	string
-	time.Time
-}
+// errNotAPlaylist is what a client gets when the provider answered something
+// else than a playlist. The provider's own answer may name its credentials:
+// it is not passed on.
+var errNotAPlaylist = errors.New("the provider did not answer with a playlist")
 
-var hlsChannelsRedirectURL map[string]url.URL = map[string]url.URL{}
-var hlsChannelsRedirectURLLock = sync.RWMutex{}
+// cachedPlaylist returns the playlist kept under key, building it again once
+// it is older than the configured expiration.
+func (c *Config) cachedPlaylist(key string, build func() (*m3u.Playlist, error)) ([]byte, error) {
+	c.m3uCacheLock.Lock()
+	defer c.m3uCacheLock.Unlock()
 
-// XXX Use key/value storage e.g: etcd, redis...
-// and remove that dirty globals
-var xtreamM3uCache map[string]cacheMeta = map[string]cacheMeta{}
-var xtreamM3uCacheLock = sync.RWMutex{}
-
-func (c *Config) cacheXtreamM3u(playlist *m3u.Playlist, cacheName string) error {
-	xtreamM3uCacheLock.Lock()
-	defer xtreamM3uCacheLock.Unlock()
-
-	tmp := *c
-	tmp.playlist = playlist
-
-	path := filepath.Join(os.TempDir(), uuid.NewV4().String()+".iptv-proxy.m3u")
-	f, err := os.Create(path)
-	if err != nil {
-		return err
+	if cached, ok := c.m3uCache[key]; ok && time.Since(cached.at) < time.Duration(c.M3UCacheExpiration)*time.Hour {
+		return cached.body, nil
 	}
-	defer f.Close()
 
-	if err := tmp.marshallInto(f, true); err != nil {
-		return err
-	}
-	xtreamM3uCache[cacheName] = cacheMeta{path, time.Now()}
-
-	return nil
-}
-
-func (c *Config) xtreamGenerateM3u(ctx *gin.Context, extension string) (*m3u.Playlist, error) {
-	client, err := xtreamapi.New(c.XtreamUser.String(), c.XtreamPassword.String(), c.XtreamBaseURL, ctx.Request.UserAgent())
+	playlist, err := build()
 	if err != nil {
 		return nil, err
 	}
+	_, body := c.proxify(playlist, true)
+	c.m3uCache[key] = cachedM3U{body: body, at: time.Now()}
 
-	cat, err := client.GetLiveCategories()
+	return body, nil
+}
+
+// providerGet asks the provider's API and returns its whole answer.
+func (c *Config) providerGet(ctx *gin.Context, endpoint string, params url.Values) (int, http.Header, []byte, error) {
+	resp, err := c.upstream(ctx, c.client, c.providerAccount().APIURL(endpoint, params), false)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	defer resp.Body.Close() // nolint: errcheck
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, nil, nil, withoutURL(err)
+	}
+	return resp.StatusCode, resp.Header, body, nil
+}
+
+// providerList asks the provider's API for a list (categories, streams).
+func (c *Config) providerList(ctx *gin.Context, action string) ([]map[string]any, error) {
+	status, _, body, err := c.providerGet(ctx, "player_api.php", url.Values{"action": {action}})
+	if err != nil {
+		return nil, err
+	}
+	if status < 200 || status > 299 {
+		return nil, fmt.Errorf("%s: the provider answered HTTP %d", action, status)
+	}
+	return xtream.DecodeList(body)
+}
+
+// xtreamGenerateM3u builds the live playlist from the provider's API, for
+// providers whose get.php is disabled.
+func (c *Config) xtreamGenerateM3u(ctx *gin.Context, extension string) (*m3u.Playlist, error) {
+	categories, err := c.providerList(ctx, "get_live_categories")
+	if err != nil {
+		return nil, err
+	}
+	streams, err := c.providerList(ctx, "get_live_streams")
 	if err != nil {
 		return nil, err
 	}
@@ -91,272 +106,222 @@ func (c *Config) xtreamGenerateM3u(ctx *gin.Context, extension string) (*m3u.Pla
 		prefix = "live/"
 	}
 
-	var playlist = new(m3u.Playlist)
-	playlist.Tracks = make([]m3u.Track, 0)
+	byCategory := map[string][]map[string]any{}
+	for _, stream := range streams {
+		id := xtream.Text(stream["category_id"])
+		byCategory[id] = append(byCategory[id], stream)
+	}
 
-	for _, category := range cat {
-		live, err := client.GetLiveStreams(fmt.Sprint(category.ID))
-		if err != nil {
-			return nil, err
+	playlist := &m3u.Playlist{}
+	add := func(group string, streams []map[string]any) {
+		for _, stream := range streams {
+			name := xtream.Text(stream["name"])
+			playlist.Tracks = append(playlist.Tracks, m3u.Track{
+				ExtInf: m3u.ExtInfLine(
+					name,
+					[2]string{"tvg-id", xtream.Text(stream["epg_channel_id"])},
+					[2]string{"tvg-name", name},
+					[2]string{"tvg-logo", xtream.Text(stream["stream_icon"])},
+					[2]string{"group-title", group},
+				),
+				URI: c.providerAccount().StreamURL(prefix, xtream.Text(stream["stream_id"])+extension),
+			})
 		}
-
-		for _, stream := range live {
-			track := m3u.Track{Name: stream.Name, Length: -1, URI: "", Tags: nil}
-
-			//TODO: Add more tag if needed.
-			if stream.EPGChannelID != "" {
-				track.Tags = append(track.Tags, m3u.Tag{Name: "tvg-id", Value: stream.EPGChannelID})
-			}
-			if stream.Name != "" {
-				track.Tags = append(track.Tags, m3u.Tag{Name: "tvg-name", Value: stream.Name})
-			}
-			if stream.Icon != "" {
-				track.Tags = append(track.Tags, m3u.Tag{Name: "tvg-logo", Value: stream.Icon})
-			}
-			if category.Name != "" {
-				track.Tags = append(track.Tags, m3u.Tag{Name: "group-title", Value: category.Name})
-			}
-
-			track.URI = fmt.Sprintf("%s/%s%s/%s/%s%s", c.XtreamBaseURL, prefix, c.XtreamUser, c.XtreamPassword, fmt.Sprint(stream.ID), extension)
-			playlist.Tracks = append(playlist.Tracks, track)
+	}
+	for _, category := range categories {
+		id := xtream.Text(category["category_id"])
+		add(xtream.Text(category["category_name"]), byCategory[id])
+		delete(byCategory, id)
+	}
+	// Streams of a category the provider does not list are not lost.
+	for _, stream := range streams {
+		id := xtream.Text(stream["category_id"])
+		if rest, ok := byCategory[id]; ok {
+			add("", rest)
+			delete(byCategory, id)
 		}
 	}
 
 	return playlist, nil
 }
 
+// xtreamGetAuto serves the playlist the proxy was started with: the
+// provider's get.php with the parameters of that address.
 func (c *Config) xtreamGetAuto(ctx *gin.Context) {
-	newQuery := ctx.Request.URL.Query()
-	q := c.RemoteURL.Query()
-	for k, v := range q {
-		if k == "username" || k == "password" {
-			continue
-		}
-
-		newQuery.Add(k, strings.Join(v, ","))
+	params := url.Values{}
+	for k, v := range ctx.Request.Form {
+		params[k] = v
 	}
-	ctx.Request.URL.RawQuery = newQuery.Encode()
+	for k, v := range c.RemoteURL.Query() {
+		params.Add(k, strings.Join(v, ","))
+	}
 
-	c.xtreamGet(ctx)
+	c.xtreamServeGet(ctx, params)
 }
 
 func (c *Config) xtreamGet(ctx *gin.Context) {
-	rawURL := fmt.Sprintf("%s/get.php?username=%s&password=%s", c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword)
+	c.xtreamServeGet(ctx, ctx.Request.Form)
+}
 
-	q := ctx.Request.URL.Query()
+func (c *Config) xtreamServeGet(ctx *gin.Context, params url.Values) {
+	// The same parameters give the same playlist: the cache key is the
+	// provider address they build.
+	key := c.providerAccount().APIURL("get.php", params)
 
-	for k, v := range q {
-		if k == "username" || k == "password" {
-			continue
+	body, err := c.cachedPlaylist(key, func() (*m3u.Playlist, error) {
+		log.Printf("[iptv-proxy] %v | %s | xtream cache m3u file\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP())
+		status, _, answer, err := c.providerGet(ctx, "get.php", params)
+		if err != nil {
+			return nil, err
 		}
-
-		rawURL = fmt.Sprintf("%s&%s=%s", rawURL, k, strings.Join(v, ","))
-	}
-
-	m3uURL, err := url.Parse(rawURL)
+		if status < 200 || status > 299 {
+			return nil, fmt.Errorf("get.php: the provider answered HTTP %d", status)
+		}
+		playlist, err := m3u.Parse(strings.NewReader(string(answer)))
+		if err != nil {
+			return nil, errNotAPlaylist
+		}
+		return playlist, nil
+	})
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		c.upstreamError(ctx, err)
 		return
 	}
 
-	xtreamM3uCacheLock.RLock()
-	meta, ok := xtreamM3uCache[m3uURL.String()]
-	d := time.Since(meta.Time)
-	if !ok || d.Hours() >= float64(c.M3UCacheExpiration) {
-		log.Printf("[iptv-proxy] %v | %s | xtream cache m3u file\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP())
-		xtreamM3uCacheLock.RUnlock()
-		playlist, err := m3u.Parse(m3uURL.String())
-		if err != nil {
-			ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-			return
-		}
-		if err := c.cacheXtreamM3u(&playlist, m3uURL.String()); err != nil {
-			ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-			return
-		}
-	} else {
-		xtreamM3uCacheLock.RUnlock()
-	}
-
-	ctx.Header("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, c.M3UFileName))
-	xtreamM3uCacheLock.RLock()
-	path := xtreamM3uCache[m3uURL.String()].string
-	xtreamM3uCacheLock.RUnlock()
-	ctx.Header("Content-Type", "application/octet-stream")
-
-	ctx.File(path)
+	c.serveM3U(ctx, body)
 }
 
 func (c *Config) xtreamApiGet(ctx *gin.Context) {
-	const (
-		apiGet = "apiget"
-	)
+	extension := ctx.Query("output")
 
-	var (
-		extension = ctx.Query("output")
-		cacheName = apiGet + extension
-	)
-
-	xtreamM3uCacheLock.RLock()
-	meta, ok := xtreamM3uCache[cacheName]
-	d := time.Since(meta.Time)
-	if !ok || d.Hours() >= float64(c.M3UCacheExpiration) {
+	body, err := c.cachedPlaylist("apiget"+extension, func() (*m3u.Playlist, error) {
 		log.Printf("[iptv-proxy] %v | %s | xtream cache API m3u file\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP())
-		xtreamM3uCacheLock.RUnlock()
-		playlist, err := c.xtreamGenerateM3u(ctx, extension)
-		if err != nil {
-			ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-			return
-		}
-		if err := c.cacheXtreamM3u(playlist, cacheName); err != nil {
-			ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-			return
-		}
-	} else {
-		xtreamM3uCacheLock.RUnlock()
-	}
-
-	ctx.Header("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, c.M3UFileName))
-	xtreamM3uCacheLock.RLock()
-	path := xtreamM3uCache[cacheName].string
-	xtreamM3uCacheLock.RUnlock()
-	ctx.Header("Content-Type", "application/octet-stream")
-
-	ctx.File(path)
-
-}
-
-func (c *Config) xtreamPlayerAPIGET(ctx *gin.Context) {
-	c.xtreamPlayerAPI(ctx, ctx.Request.URL.Query())
-}
-
-func (c *Config) xtreamPlayerAPIPOST(ctx *gin.Context) {
-	contents, err := ioutil.ReadAll(ctx.Request.Body)
+		return c.xtreamGenerateM3u(ctx, extension)
+	})
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		c.upstreamError(ctx, err)
 		return
 	}
 
-	q, err := url.ParseQuery(string(contents))
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-		return
-	}
-
-	c.xtreamPlayerAPI(ctx, q)
+	c.serveM3U(ctx, body)
 }
 
-func (c *Config) xtreamPlayerAPI(ctx *gin.Context, q url.Values) {
-	var action string
-	if len(q["action"]) > 0 {
-		action = q["action"][0]
-	}
+// xtreamPlayerAPI answers the Xtream client API with the provider's own
+// answer. Only what names the provider is rewritten: the account and server
+// of the login answer, and stream addresses holding its credentials.
+func (c *Config) xtreamPlayerAPI(ctx *gin.Context) {
+	params := ctx.Request.Form
+	action := params.Get("action")
 
-	client, err := xtreamapi.New(c.XtreamUser.String(), c.XtreamPassword.String(), c.XtreamBaseURL, ctx.Request.UserAgent())
+	status, header, body, err := c.providerGet(ctx, "player_api.php", params)
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-		return
-	}
-
-	resp, httpcode, err := client.Action(c.ProxyConfig, action, q)
-	if err != nil {
-		ctx.AbortWithError(httpcode, err) // nolint: errcheck
+		c.upstreamError(ctx, err)
 		return
 	}
 
 	log.Printf("[iptv-proxy] %v | %s |Action\t%s\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP(), action)
 
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-		return
+	if action == "" {
+		protocol := "http"
+		if c.HTTPS {
+			protocol = "https"
+		}
+		body, _ = xtream.RewriteLogin(body, xtream.ProxyInfo{
+			Account:  c.proxyAccount(),
+			Hostname: c.HostConfig.Hostname,
+			Port:     c.AdvertisedPort,
+			Protocol: protocol,
+		})
 	}
+	body = xtream.Sanitize(body, c.providerAccount(), c.proxyAccount())
 
-	ctx.JSON(http.StatusOK, resp)
+	contentType := header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/json"
+	}
+	ctx.Data(status, contentType, body)
 }
 
+// xtreamXMLTV passes the provider's guide on as it comes: it can weigh
+// hundreds of megabytes.
 func (c *Config) xtreamXMLTV(ctx *gin.Context) {
-	client, err := xtreamapi.New(c.XtreamUser.String(), c.XtreamPassword.String(), c.XtreamBaseURL, ctx.Request.UserAgent())
+	resp, err := c.upstream(ctx, c.client, c.providerAccount().APIURL("xmltv.php", ctx.Request.Form), false)
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		c.upstreamError(ctx, err)
 		return
 	}
+	defer resp.Body.Close() // nolint: errcheck
 
-	resp, err := client.GetXMLTV()
+	if resp.Header.Get("Content-Type") == "" {
+		resp.Header.Set("Content-Type", "application/xml")
+	}
+	c.passOn(ctx, resp)
+}
+
+func (c *Config) xtreamProviderStream(ctx *gin.Context, prefix, rest string) {
+	rpURL, err := url.Parse(c.providerAccount().StreamURL(prefix, rest))
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		ctx.AbortWithError(http.StatusInternalServerError, errors.New("invalid stream address")) // nolint: errcheck
 		return
 	}
+	rpURL.RawQuery = ctx.Request.URL.RawQuery
 
-	ctx.Data(http.StatusOK, "application/xml", resp)
+	c.xtreamStream(ctx, rpURL)
 }
 
 func (c *Config) xtreamStreamHandler(ctx *gin.Context) {
-	id := ctx.Param("id")
-	rpURL, err := url.Parse(fmt.Sprintf("%s/%s/%s/%s", c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword, id))
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-		return
-	}
-
-	c.xtreamStream(ctx, rpURL)
+	c.xtreamProviderStream(ctx, "", url.PathEscape(ctx.Param("id")))
 }
 
 func (c *Config) xtreamStreamLive(ctx *gin.Context) {
-	id := ctx.Param("id")
-	rpURL, err := url.Parse(fmt.Sprintf("%s/live/%s/%s/%s", c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword, id))
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-		return
-	}
-
-	c.xtreamStream(ctx, rpURL)
+	c.xtreamProviderStream(ctx, "live/", url.PathEscape(ctx.Param("id")))
 }
 
-func (c *Config) xtreamStreamPlay(ctx *gin.Context) {
-	token := ctx.Param("token")
-	t := ctx.Param("type")
-	rpURL, err := url.Parse(fmt.Sprintf("%s/play/%s/%s", c.XtreamBaseURL, token, t))
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-		return
-	}
+func (c *Config) xtreamStreamMovie(ctx *gin.Context) {
+	c.xtreamProviderStream(ctx, "movie/", url.PathEscape(ctx.Param("id")))
+}
 
-	c.xtreamStream(ctx, rpURL)
+func (c *Config) xtreamStreamSeries(ctx *gin.Context) {
+	c.xtreamProviderStream(ctx, "series/", url.PathEscape(ctx.Param("id")))
 }
 
 func (c *Config) xtreamStreamTimeshift(ctx *gin.Context) {
-	duration := ctx.Param("duration")
-	start := ctx.Param("start")
-	id := ctx.Param("id")
-	rpURL, err := url.Parse(fmt.Sprintf("%s/timeshift/%s/%s/%s/%s/%s", c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword, duration, start, id))
+	rest := strings.Join([]string{
+		url.PathEscape(ctx.Param("duration")),
+		url.PathEscape(ctx.Param("start")),
+		url.PathEscape(ctx.Param("id")),
+	}, "/")
+	rpURL, err := url.Parse(c.providerAccount().StreamURL("timeshift/", rest))
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		ctx.AbortWithError(http.StatusInternalServerError, errors.New("invalid stream address")) // nolint: errcheck
 		return
 	}
 
 	c.stream(ctx, rpURL)
 }
 
-func (c *Config) xtreamStreamMovie(ctx *gin.Context) {
-	id := ctx.Param("id")
-	rpURL, err := url.Parse(fmt.Sprintf("%s/movie/%s/%s/%s", c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword, id))
+func (c *Config) xtreamStreamPlay(ctx *gin.Context) {
+	rpURL, err := url.Parse(fmt.Sprintf(
+		"%s/play/%s/%s",
+		strings.TrimRight(c.XtreamBaseURL, "/"),
+		url.PathEscape(ctx.Param("token")),
+		url.PathEscape(ctx.Param("type")),
+	))
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		ctx.AbortWithError(http.StatusInternalServerError, errors.New("invalid stream address")) // nolint: errcheck
 		return
 	}
 
 	c.xtreamStream(ctx, rpURL)
 }
 
-func (c *Config) xtreamStreamSeries(ctx *gin.Context) {
-	id := ctx.Param("id")
-	rpURL, err := url.Parse(fmt.Sprintf("%s/series/%s/%s/%s", c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword, id))
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+func (c *Config) xtreamStream(ctx *gin.Context, oriURL *url.URL) {
+	if strings.HasSuffix(ctx.Param("id"), ".m3u8") {
+		c.hlsXtreamStream(ctx, oriURL)
 		return
 	}
 
-	c.xtreamStream(ctx, rpURL)
+	c.stream(ctx, oriURL)
 }
 
 func (c *Config) xtreamHlsStream(ctx *gin.Context) {
@@ -371,7 +336,7 @@ func (c *Config) xtreamHlsStream(ctx *gin.Context) {
 	}
 	channel := s[0]
 
-	url, err := getHlsRedirectURL(channel)
+	redirect, err := c.getHlsRedirectURL(channel)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 		return
@@ -380,15 +345,14 @@ func (c *Config) xtreamHlsStream(ctx *gin.Context) {
 	req, err := url.Parse(
 		fmt.Sprintf(
 			"%s://%s/hls/%s/%s",
-			url.Scheme,
-			url.Host,
-			ctx.Param("token"),
-			ctx.Param("chunk"),
+			redirect.Scheme,
+			redirect.Host,
+			url.PathEscape(ctx.Param("token")),
+			url.PathEscape(chunk),
 		),
 	)
-
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		ctx.AbortWithError(http.StatusInternalServerError, errors.New("invalid stream address")) // nolint: errcheck
 		return
 	}
 
@@ -398,7 +362,7 @@ func (c *Config) xtreamHlsStream(ctx *gin.Context) {
 func (c *Config) xtreamHlsrStream(ctx *gin.Context) {
 	channel := ctx.Param("channel")
 
-	url, err := getHlsRedirectURL(channel)
+	redirect, err := c.getHlsRedirectURL(channel)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
 		return
@@ -407,102 +371,87 @@ func (c *Config) xtreamHlsrStream(ctx *gin.Context) {
 	req, err := url.Parse(
 		fmt.Sprintf(
 			"%s://%s/hlsr/%s/%s/%s/%s/%s/%s",
-			url.Scheme,
-			url.Host,
-			ctx.Param("token"),
-			c.XtreamUser,
-			c.XtreamPassword,
-			ctx.Param("channel"),
-			ctx.Param("hash"),
-			ctx.Param("chunk"),
+			redirect.Scheme,
+			redirect.Host,
+			url.PathEscape(ctx.Param("token")),
+			c.XtreamUser.PathEscape(),
+			c.XtreamPassword.PathEscape(),
+			url.PathEscape(channel),
+			url.PathEscape(ctx.Param("hash")),
+			url.PathEscape(ctx.Param("chunk")),
 		),
 	)
-
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		ctx.AbortWithError(http.StatusInternalServerError, errors.New("invalid stream address")) // nolint: errcheck
 		return
 	}
 
 	c.xtreamStream(ctx, req)
 }
 
-func getHlsRedirectURL(channel string) (*url.URL, error) {
-	hlsChannelsRedirectURLLock.RLock()
-	defer hlsChannelsRedirectURLLock.RUnlock()
+func (c *Config) getHlsRedirectURL(channel string) (*url.URL, error) {
+	c.hlsRedirectsLock.RLock()
+	defer c.hlsRedirectsLock.RUnlock()
 
-	url, ok := hlsChannelsRedirectURL[channel+".m3u8"]
+	redirect, ok := c.hlsRedirects[channel+".m3u8"]
 	if !ok {
 		return nil, errors.New("HSL redirect url not found")
 	}
 
-	return &url, nil
+	return &redirect, nil
 }
 
+// hlsXtreamStream serves the HLS playlist of a stream. Its segments are
+// named relative to it: the client asks the proxy for them, with the
+// proxy's credentials.
 func (c *Config) hlsXtreamStream(ctx *gin.Context, oriURL *url.URL) {
-	client := &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-
-	req, err := http.NewRequest("GET", oriURL.String(), nil)
+	resp, err := c.upstream(ctx, c.noRedirect, oriURL.String(), true)
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+		c.upstreamError(ctx, err)
 		return
 	}
+	defer resp.Body.Close() // nolint: errcheck
 
-	mergeHttpHeader(req.Header, ctx.Request.Header)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusFound {
+	if resp.StatusCode >= 300 && resp.StatusCode <= 399 {
 		location, err := resp.Location()
 		if err != nil {
-			ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
+			ctx.AbortWithError(http.StatusBadGateway, errors.New("HLS redirect without a location")) // nolint: errcheck
 			return
 		}
+
 		id := ctx.Param("id")
-		if strings.Contains(location.String(), id) {
-			hlsChannelsRedirectURLLock.Lock()
-			hlsChannelsRedirectURL[id] = *location
-			hlsChannelsRedirectURLLock.Unlock()
-
-			hlsReq, err := http.NewRequest("GET", location.String(), nil)
-			if err != nil {
-				ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-				return
-			}
-
-			mergeHttpHeader(hlsReq.Header, ctx.Request.Header)
-
-			hlsResp, err := client.Do(hlsReq)
-			if err != nil {
-				ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-				return
-			}
-			defer hlsResp.Body.Close()
-
-			b, err := ioutil.ReadAll(hlsResp.Body)
-			if err != nil {
-				ctx.AbortWithError(http.StatusInternalServerError, err) // nolint: errcheck
-				return
-			}
-			body := string(b)
-			body = strings.ReplaceAll(body, "/"+c.XtreamUser.String()+"/"+c.XtreamPassword.String()+"/", "/"+c.User.String()+"/"+c.Password.String()+"/")
-
-			mergeHttpHeader(ctx.Writer.Header(), hlsResp.Header)
-
-			ctx.Data(http.StatusOK, hlsResp.Header.Get("Content-Type"), []byte(body))
+		if !strings.Contains(location.String(), id) {
+			// A redirect the proxy has no route to serve from: the client
+			// follows it by itself.
+			log.Printf("[iptv-proxy] %v | %s | HLS redirect to another address for channel %s, passed to the client\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP(), id)
+			ctx.Header("Location", location.String())
+			ctx.Status(resp.StatusCode)
 			return
 		}
-		ctx.AbortWithError(http.StatusInternalServerError, errors.New("Unable to HLS stream")) // nolint: errcheck
-		return
+
+		// The segments are served by the host redirected to: remembered
+		// for when the client asks for them.
+		c.hlsRedirectsLock.Lock()
+		c.hlsRedirects[id] = *location
+		c.hlsRedirectsLock.Unlock()
+
+		hlsResp, err := c.upstream(ctx, c.noRedirect, location.String(), true)
+		if err != nil {
+			c.upstreamError(ctx, err)
+			return
+		}
+		defer hlsResp.Body.Close() // nolint: errcheck
+		resp = hlsResp
 	}
 
-	ctx.Status(resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.upstreamError(ctx, withoutURL(err))
+		return
+	}
+	body = xtream.Sanitize(body, c.providerAccount(), c.proxyAccount())
+
+	resp.Header.Del("Content-Length") // the rewritten playlist has its own
+	mergeHttpHeader(ctx.Writer.Header(), resp.Header)
+	ctx.Data(resp.StatusCode, resp.Header.Get("Content-Type"), body)
 }
