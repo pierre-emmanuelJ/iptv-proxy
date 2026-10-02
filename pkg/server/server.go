@@ -39,7 +39,9 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/config"
+	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/hls"
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/m3u"
+	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/restream"
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/xtream"
 )
 
@@ -61,6 +63,10 @@ var (
 	apiHeaderTimeout    = 5 * time.Minute
 )
 
+// streamRetries are the waits before each attempt to open again a live
+// stream the provider dropped while clients are watching it.
+var streamRetries = []time.Duration{0, 500 * time.Millisecond, time.Second, 2 * time.Second, 4 * time.Second}
+
 // Config represent the server configuration
 type Config struct {
 	*config.ProxyConfig
@@ -79,6 +85,10 @@ type Config struct {
 
 	// tokens name the addresses found in HLS playlists.
 	tokens *addressTokens
+
+	// hub shares one provider connection between the clients of a live
+	// stream.
+	hub *restream.Hub
 
 	m3uCacheLock sync.Mutex
 	m3uCache     map[string]cachedM3U
@@ -122,6 +132,14 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 		return nil, err
 	}
 	c.tokens = tokens
+
+	c.hub = restream.NewHub()
+	c.hub.Retries = streamRetries
+	c.hub.Shareable = func(resp *http.Response, begin []byte) bool {
+		// A live stream has no end, hence no length. A playlist is rewritten
+		// for each client; an error is that client's to read.
+		return resp.StatusCode == http.StatusOK && resp.ContentLength < 0 && !hls.IsPlaylist(begin)
+	}
 
 	if c.endpointAntiColision == "" {
 		id := make([]byte, 4)

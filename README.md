@@ -178,6 +178,7 @@ case, with `_` instead of `-`. A flag wins over the variable.
 | `--m3u-cache-expiration` | `M3U_CACHE_EXPIRATION` | `1` | Hours a playlist fetched from an Xtream provider is kept before asking for it again. |
 | `--xtream-api-get` | `XTREAM_API_GET` | `false` | Build the `get.php` playlist (live channels) from the provider's API, for providers that disabled `get.php`. |
 | `--user-agent` | `USER_AGENT` | | User-Agent sent to the provider instead of the player's. Some providers only answer known players. |
+| `--no-stream-sharing` | `NO_STREAM_SHARING` | `false` | Open one provider connection per player for a live stream, instead of sharing one between the players watching it. |
 | `--iptv-proxy-config` | | | YAML file holding the same options, named as the flags (`m3u-url: ...`). |
 
 Good to know:
@@ -186,9 +187,11 @@ Good to know:
 - `USER` and `HOSTNAME` are also ordinary system variables. When you run the
   binary from a shell, pass `--user` explicitly, or your login name is used. In
   Docker, always set `HOSTNAME`, or the container's ID is used.
-- `GIN_MODE=release` is not an option of the proxy but of its web framework.
-  Set it: without it, the proxy lists its routes at startup, and they contain
-  your user and password. The access log masks them in both modes.
+- `GIN_MODE` is not an option of the proxy but of its web framework. Since
+  v3.10.0 the proxy runs in `release` mode unless you set it. Before that,
+  set `GIN_MODE=release` as the examples do: the debug mode lists the routes
+  at startup, and they contain your user and password. The access log masks
+  them in both modes.
 
 ## M3U playlists
 
@@ -265,6 +268,21 @@ provider's address, encrypted: a player never sees the provider's host,
 credentials or session tokens. Nothing is stored, and tokens stay valid across
 restarts.
 
+## Live streams: one connection to the provider
+
+An IPTV account allows a few connections at a time, often a single one. When
+several players watch the same live channel, the proxy opens one connection to
+the provider and shares it: the first player opens the stream, the next ones
+join it where it is, and the connection is closed when the last one leaves.
+
+If the provider drops the stream, or leaves it silent for 20 seconds, the
+proxy opens it again while someone is watching, so the player does not have
+to reconnect. After a few attempts that fail, the stream ends.
+
+Movies, series and catch-up are files: each player reads its own, from where
+it wants. `--no-stream-sharing` gives every player its own connection for live
+streams too.
+
 ## Behind a reverse proxy, with HTTPS
 
 The proxy listens in plain HTTP. To serve it on your own domain with HTTPS,
@@ -314,7 +332,6 @@ docker compose up -d
 
 Planned, not available yet:
 
-- Sharing one provider connection between several players watching the same channel.
 - Filtering the channels and groups a playlist contains.
 - Several providers behind one proxy.
 - Several users, each with their own credentials.

@@ -1,5 +1,38 @@
 # Changelog
 
+## 3.10.0
+
+### Added
+
+- **One provider connection per live stream, whatever the number of
+  clients.** An account allows a few connections, often a single one: two
+  devices on the same channel now share one connection to the provider. The
+  first client opens the stream, the next ones join it where it is, and the
+  provider's stream is closed as soon as the last one leaves. Movies,
+  episodes, catch-up and anything asked with a range are files: each client
+  still reads its own. `--no-stream-sharing` (`NO_STREAM_SHARING`) goes back
+  to one connection per client. (related: #110, #101)
+- **A live stream the provider drops is opened again** while clients are
+  watching, without the player having to reconnect: at once, then after
+  0.5, 1, 2 and 4 seconds. A provider that keeps dropping it is given up. A
+  connection that stays open but sends nothing for 20 seconds (a frozen
+  picture) is opened again too. (related: #125)
+- MPEG-TS is forwarded by whole packets, so a client joining a stream, or a
+  connection opened again, never starts in the middle of a packet.
+
+### Changed
+
+- A client that cannot keep up with a live stream is disconnected instead
+  of delaying it: it must not hold the others back.
+- Media starts a little sooner: only the first 16 bytes of a provider answer
+  are looked at to tell a playlist from media.
+
+### Security
+
+- gin's debug mode is no longer the default: at startup it listed the
+  routes, which hold the proxy's user and password. `GIN_MODE=debug` brings
+  it back.
+
 ## 3.9.0
 
 ### Fixed

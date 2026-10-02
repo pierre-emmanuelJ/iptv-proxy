@@ -20,6 +20,7 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"crypto/subtle"
 	"errors"
 	"fmt"
@@ -40,8 +41,9 @@ const (
 	// (credentials and API parameters).
 	maxFormBytes = 1 << 20
 	// sniffBytes is how much of a response is looked at to tell a playlist
-	// from media.
-	sniffBytes = 512
+	// from media: "#EXTM3U", after a byte order mark and a few blanks. Kept
+	// small, as a slow stream is not sent on before they are read.
+	sniffBytes = 16
 	// maxErrorPageBytes bounds a provider's error page.
 	maxErrorPageBytes = 1 << 20
 	// maxPlaylistBytes bounds an HLS playlist: a day of DVR window is a few
@@ -59,8 +61,74 @@ func (c *Config) serveM3U(ctx *gin.Context, playlist []byte) {
 }
 
 func (c *Config) reverseProxy(track *url.URL) gin.HandlerFunc {
+	// A playlist does not say what a track is. A file is recognized by its
+	// extension; anything else may be live television.
+	live := !fileExtensions[strings.ToLower(path.Ext(track.Path))]
 	return func(ctx *gin.Context) {
+		if live {
+			c.streamLive(ctx, track)
+			return
+		}
 		c.stream(ctx, track)
+	}
+}
+
+// fileExtensions are those of media with a beginning and an end: each client
+// reads its own copy, from where it wants.
+var fileExtensions = map[string]bool{
+	".mp4": true, ".mkv": true, ".avi": true, ".mov": true, ".m4v": true, ".wmv": true,
+	".flv": true, ".webm": true, ".mpg": true, ".mpeg": true, ".vob": true, ".3gp": true,
+	".mp3": true, ".m4a": true, ".flac": true, ".wav": true, ".ogg": true,
+	".srt": true, ".vtt": true, ".jpg": true, ".jpeg": true, ".png": true,
+}
+
+// streamLive serves a live stream: every client watching it shares one
+// connection to the provider, opened again if the provider drops it.
+func (c *Config) streamLive(ctx *gin.Context, oriURL *url.URL) {
+	// A range is a request for a part of a file: not live television.
+	if r := ctx.Request.Header.Get("Range"); c.NoStreamSharing || (r != "" && r != "bytes=0-") {
+		c.stream(ctx, oriURL)
+		return
+	}
+
+	// The provider is asked with this client's headers; the stream then
+	// lives as long as anyone watches it, not as long as this request.
+	header := c.upstreamHeader(ctx, true)
+	sub, resp, err := c.hub.Join(oriURL.String(), func(streamCtx context.Context) (*http.Response, error) {
+		return c.upstreamDo(streamCtx, c.client, oriURL.String(), header)
+	})
+	if err != nil {
+		c.upstreamError(ctx, err)
+		return
+	}
+	if resp != nil {
+		// Not a live stream after all (a playlist, a file, an error).
+		defer resp.Body.Close() // nolint: errcheck
+		c.deliver(ctx, resp)
+		return
+	}
+	defer sub.Close()
+
+	c.dropLeakingHeaders(sub.Header)
+	mergeHttpHeader(ctx.Writer.Header(), sub.Header)
+	ctx.Status(http.StatusOK)
+	ctx.Writer.WriteHeaderNow()
+	ctx.Writer.Flush()
+
+	gone := ctx.Request.Context().Done()
+	for {
+		select {
+		case chunk, ok := <-sub.C:
+			if !ok {
+				return // the provider is gone for good, or this client is too slow
+			}
+			if _, err := ctx.Writer.Write(chunk); err != nil {
+				return
+			}
+			ctx.Writer.Flush()
+		case <-gone:
+			return
+		}
 	}
 }
 
@@ -75,9 +143,15 @@ func (c *Config) stream(ctx *gin.Context, oriURL *url.URL) {
 	}
 	defer resp.Body.Close() // nolint: errcheck
 
+	c.deliver(ctx, resp)
+}
+
+// deliver sends a provider answer to the client: a playlist rewritten,
+// anything else as it comes.
+func (c *Config) deliver(ctx *gin.Context, resp *http.Response) {
 	// Media or playlist: the first bytes tell, whatever the address and
 	// the content type say.
-	body := bufio.NewReaderSize(resp.Body, sniffBytes)
+	body := bufio.NewReader(resp.Body)
 	start, _ := body.Peek(sniffBytes) // a short or failing body is passed on as it is
 	resp.Body = struct {
 		io.Reader
@@ -210,17 +284,28 @@ func (w flushWriter) Write(p []byte) (int, error) {
 // cancelled when the client leaves. With forwardHeaders the client's headers
 // go along (Range, for seeking in a movie); otherwise only a User-Agent.
 func (c *Config) upstream(ctx *gin.Context, client *http.Client, rawURL string, forwardHeaders bool) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx.Request.Context(), http.MethodGet, rawURL, nil)
+	return c.upstreamDo(ctx.Request.Context(), client, rawURL, c.upstreamHeader(ctx, forwardHeaders))
+}
+
+// upstreamHeader builds the headers of a request to the provider made for a
+// client.
+func (c *Config) upstreamHeader(ctx *gin.Context, forwardHeaders bool) http.Header {
+	header := http.Header{}
+	if forwardHeaders {
+		mergeHttpHeader(header, ctx.Request.Header)
+		// Media is not compressed, and a playlist must be readable.
+		header.Del("Accept-Encoding")
+	}
+	header.Set("User-Agent", c.upstreamUserAgent(ctx.Request.UserAgent()))
+	return header
+}
+
+func (c *Config) upstreamDo(ctx context.Context, client *http.Client, rawURL string, header http.Header) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, errors.New("invalid provider address")
 	}
-
-	if forwardHeaders {
-		mergeHttpHeader(req.Header, ctx.Request.Header)
-		// Media is not compressed, and a playlist must be readable.
-		req.Header.Del("Accept-Encoding")
-	}
-	req.Header.Set("User-Agent", c.upstreamUserAgent(ctx.Request.UserAgent()))
+	req.Header = header.Clone()
 
 	resp, err := client.Do(req)
 	if err != nil {
