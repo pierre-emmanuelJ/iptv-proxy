@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.10.0 (unreleased)
+## 3.10.0
 
 ### Added
 
