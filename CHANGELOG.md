@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.9.0 (unreleased)
+## 3.9.0
 
 ### Fixed
 
