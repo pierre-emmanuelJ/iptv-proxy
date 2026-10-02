@@ -16,7 +16,7 @@ func load(t *testing.T, env map[string]string) {
 		t.Setenv("HOME", t.TempDir())
 	}
 	t.Chdir(t.TempDir())
-	for _, name := range []string{"USER", "PASSWORD", "HOSTNAME", "PROXY_USER", "PROXY_PASSWORD", "PROXY_HOSTNAME", "PORT"} {
+	for _, name := range []string{"USER", "PASSWORD", "HOSTNAME", "PROXY_USER", "PROXY_PASSWORD", "PROXY_HOSTNAME", "PORT", "M3U_URL", "XTREAM_USER", "XTREAM_PASSWORD", "XTREAM_BASE_URL", "ADVERTISED_PORT", "HTTPS", "USER_AGENT", "XTREAM_API_GET", "XTREAM_API_GET_MOVIES", "NO_STREAM_SHARING"} {
 		t.Setenv(name, "")
 		os.Unsetenv(name) // nolint: errcheck
 	}
@@ -112,5 +112,78 @@ func TestConfigurationFileInTheHomeDirectory(t *testing.T) {
 	load(t, map[string]string{"HOME": home, "PORT": "7000"})
 	if got := viper.GetInt("port"); got != 7000 {
 		t.Errorf("port = %d, want the environment's 7000", got)
+	}
+}
+
+func TestProxyConfig(t *testing.T) {
+	load(t, map[string]string{
+		"M3U_URL":        "http://provider.example:8080/get.php?username=xuser&password=xpass&type=m3u_plus&output=ts",
+		"PROXY_USER":     "me",
+		"PROXY_PASSWORD": "secret",
+		"PROXY_HOSTNAME": "tv.example",
+		"PORT":           "9000",
+		"HTTPS":          "1",
+		"USER_AGENT":     "Player/1",
+	})
+	conf, err := proxyConfig(rootCmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// a get.php address is an Xtream account
+	if conf.XtreamBaseURL != "http://provider.example:8080" || conf.XtreamUser != "xuser" || conf.XtreamPassword != "xpass" {
+		t.Errorf("xtream account read from the playlist address: %q %q %q", conf.XtreamBaseURL, conf.XtreamUser, conf.XtreamPassword)
+	}
+	if conf.User != "me" || conf.Password != "secret" || conf.HostConfig.Hostname != "tv.example" {
+		t.Errorf("proxy settings: %q %q %q", conf.User, conf.Password, conf.HostConfig.Hostname)
+	}
+	// the port given to players is the listening one unless said otherwise
+	if conf.HostConfig.Port != 9000 || conf.AdvertisedPort != 9000 {
+		t.Errorf("ports: listening %d, advertised %d", conf.HostConfig.Port, conf.AdvertisedPort)
+	}
+	if !conf.HTTPS || conf.UserAgent != "Player/1" || conf.M3UFileName != "iptv.m3u" || conf.M3UCacheExpiration != 1 {
+		t.Errorf("other options: %+v", conf)
+	}
+	if conf.XtreamApiGetMovies || conf.NoStreamSharing || conf.XtreamGenerateApiGet {
+		t.Errorf("an option that is off by default is on: %+v", conf)
+	}
+}
+
+func TestProxyConfigExplicitXtreamAccountWins(t *testing.T) {
+	load(t, map[string]string{
+		"M3U_URL":         "http://other.example/get.php?username=a&password=b",
+		"XTREAM_USER":     "xuser",
+		"XTREAM_PASSWORD": "xpass",
+		"XTREAM_BASE_URL": "http://provider.example:8080",
+		"ADVERTISED_PORT": "443",
+	})
+	conf, err := proxyConfig(rootCmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conf.XtreamBaseURL != "http://provider.example:8080" || conf.XtreamUser != "xuser" {
+		t.Errorf("xtream account: %q %q", conf.XtreamBaseURL, conf.XtreamUser)
+	}
+	if conf.HostConfig.Port != 8080 || conf.AdvertisedPort != 443 {
+		t.Errorf("ports: listening %d, advertised %d", conf.HostConfig.Port, conf.AdvertisedPort)
+	}
+}
+
+func TestProxyConfigPlainPlaylist(t *testing.T) {
+	load(t, map[string]string{"M3U_URL": "http://provider.example/list.m3u?username=a&password=b"})
+	conf, err := proxyConfig(rootCmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conf.XtreamBaseURL != "" || conf.XtreamUser != "" {
+		t.Errorf("a playlist that is not get.php is not an Xtream account: %q %q", conf.XtreamBaseURL, conf.XtreamUser)
+	}
+	if conf.RemoteURL.String() != "http://provider.example/list.m3u?username=a&password=b" {
+		t.Errorf("playlist address = %q", conf.RemoteURL)
+	}
+
+	load(t, map[string]string{"M3U_URL": "http://[broken"})
+	if _, err := proxyConfig(rootCmd); err == nil {
+		t.Error("an invalid playlist address is refused")
 	}
 }

@@ -19,6 +19,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -41,58 +42,9 @@ var rootCmd = &cobra.Command{
 	Use:   "iptv-proxy",
 	Short: "Reverse proxy on iptv m3u file and xtream codes server api",
 	Run: func(cmd *cobra.Command, args []string) {
-		m3uURL := viper.GetString("m3u-url")
-		remoteHostURL, err := url.Parse(m3uURL)
+		conf, err := proxyConfig(cmd)
 		if err != nil {
 			log.Fatal(err)
-		}
-
-		xtreamUser := viper.GetString("xtream-user")
-		xtreamPassword := viper.GetString("xtream-password")
-		xtreamBaseURL := viper.GetString("xtream-base-url")
-
-		var username, password string
-		if strings.Contains(m3uURL, "/get.php") {
-			username = remoteHostURL.Query().Get("username")
-			password = remoteHostURL.Query().Get("password")
-		}
-
-		if xtreamBaseURL == "" && xtreamPassword == "" && xtreamUser == "" {
-			if username != "" && password != "" {
-				log.Printf("[iptv-proxy] INFO: It's seams you are using an Xtream provider!")
-
-				xtreamUser = username
-				xtreamPassword = password
-				xtreamBaseURL = fmt.Sprintf("%s://%s", remoteHostURL.Scheme, remoteHostURL.Host)
-				log.Printf("[iptv-proxy] INFO: xtream service enable with xtream base url: %q xtream username: %q", xtreamBaseURL, xtreamUser)
-			}
-		}
-
-		conf := &config.ProxyConfig{
-			HostConfig: &config.HostConfiguration{
-				Hostname: setting(cmd, "hostname"),
-				Port:     viper.GetInt("port"),
-			},
-			RemoteURL:            remoteHostURL,
-			XtreamUser:           config.CredentialString(xtreamUser),
-			XtreamPassword:       config.CredentialString(xtreamPassword),
-			XtreamBaseURL:        xtreamBaseURL,
-			M3UCacheExpiration:   viper.GetInt("m3u-cache-expiration"),
-			User:                 config.CredentialString(setting(cmd, "user")),
-			Password:             config.CredentialString(setting(cmd, "password")),
-			AdvertisedPort:       viper.GetInt("advertised-port"),
-			HTTPS:                viper.GetBool("https"),
-			M3UFileName:          viper.GetString("m3u-file-name"),
-			CustomEndpoint:       viper.GetString("custom-endpoint"),
-			CustomId:             viper.GetString("custom-id"),
-			XtreamGenerateApiGet: viper.GetBool("xtream-api-get"),
-			XtreamApiGetMovies:   viper.GetBool("xtream-api-get-movies"),
-			UserAgent:            viper.GetString("user-agent"),
-			NoStreamSharing:      viper.GetBool("no-stream-sharing"),
-		}
-
-		if conf.AdvertisedPort == 0 {
-			conf.AdvertisedPort = conf.HostConfig.Port
 		}
 
 		// gin's debug mode lists the routes at startup, and the stream
@@ -110,6 +62,66 @@ var rootCmd = &cobra.Command{
 			log.Fatal(e)
 		}
 	},
+}
+
+// proxyConfig builds the proxy's configuration from the flags, the
+// environment and the configuration file.
+func proxyConfig(cmd *cobra.Command) (*config.ProxyConfig, error) {
+	m3uURL := viper.GetString("m3u-url")
+	remoteHostURL, err := url.Parse(m3uURL)
+	if err != nil {
+		return nil, errors.New("invalid --m3u-url")
+	}
+
+	xtreamUser := viper.GetString("xtream-user")
+	xtreamPassword := viper.GetString("xtream-password")
+	xtreamBaseURL := viper.GetString("xtream-base-url")
+
+	var username, password string
+	if strings.Contains(m3uURL, "/get.php") {
+		username = remoteHostURL.Query().Get("username")
+		password = remoteHostURL.Query().Get("password")
+	}
+
+	if xtreamBaseURL == "" && xtreamPassword == "" && xtreamUser == "" {
+		if username != "" && password != "" {
+			log.Printf("[iptv-proxy] INFO: It's seams you are using an Xtream provider!")
+
+			xtreamUser = username
+			xtreamPassword = password
+			xtreamBaseURL = fmt.Sprintf("%s://%s", remoteHostURL.Scheme, remoteHostURL.Host)
+			log.Printf("[iptv-proxy] INFO: xtream service enable with xtream base url: %q xtream username: %q", xtreamBaseURL, xtreamUser)
+		}
+	}
+
+	conf := &config.ProxyConfig{
+		HostConfig: &config.HostConfiguration{
+			Hostname: setting(cmd, "hostname"),
+			Port:     viper.GetInt("port"),
+		},
+		RemoteURL:            remoteHostURL,
+		XtreamUser:           config.CredentialString(xtreamUser),
+		XtreamPassword:       config.CredentialString(xtreamPassword),
+		XtreamBaseURL:        xtreamBaseURL,
+		M3UCacheExpiration:   viper.GetInt("m3u-cache-expiration"),
+		User:                 config.CredentialString(setting(cmd, "user")),
+		Password:             config.CredentialString(setting(cmd, "password")),
+		AdvertisedPort:       viper.GetInt("advertised-port"),
+		HTTPS:                viper.GetBool("https"),
+		M3UFileName:          viper.GetString("m3u-file-name"),
+		CustomEndpoint:       viper.GetString("custom-endpoint"),
+		CustomId:             viper.GetString("custom-id"),
+		XtreamGenerateApiGet: viper.GetBool("xtream-api-get"),
+		XtreamApiGetMovies:   viper.GetBool("xtream-api-get-movies"),
+		UserAgent:            viper.GetString("user-agent"),
+		NoStreamSharing:      viper.GetBool("no-stream-sharing"),
+	}
+
+	if conf.AdvertisedPort == 0 {
+		conf.AdvertisedPort = conf.HostConfig.Port
+	}
+
+	return conf, nil
 }
 
 // setting reads one of the options whose environment variable is also an
