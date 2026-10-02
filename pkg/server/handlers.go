@@ -19,6 +19,7 @@
 package server
 
 import (
+	"bufio"
 	"crypto/subtle"
 	"errors"
 	"fmt"
@@ -29,11 +30,21 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/hls"
 )
 
-// maxFormBytes bounds the body of the form requests the proxy reads
-// (credentials and API parameters).
-const maxFormBytes = 1 << 20
+const (
+	// maxFormBytes bounds the body of the form requests the proxy reads
+	// (credentials and API parameters).
+	maxFormBytes = 1 << 20
+	// sniffBytes is how much of a response is looked at to tell a playlist
+	// from media.
+	sniffBytes = 512
+	// maxPlaylistBytes bounds an HLS playlist: a day of DVR window is a few
+	// hundred kilobytes.
+	maxPlaylistBytes = 16 << 20
+)
 
 func (c *Config) getM3U(ctx *gin.Context) {
 	c.serveM3U(ctx, c.proxyfiedM3U)
@@ -50,23 +61,9 @@ func (c *Config) reverseProxy(track *url.URL) gin.HandlerFunc {
 	}
 }
 
-// m3u8ReverseProxy serves an HLS playlist and what sits next to it at the
-// provider (its segments).
-func (c *Config) m3u8ReverseProxy(track *url.URL) gin.HandlerFunc {
-	return func(ctx *gin.Context) {
-		target := *track
-		target.Path = path.Join(path.Dir(track.Path), ctx.Param("id"))
-		target.RawPath = ""
-		if q := ctx.Request.URL.RawQuery; q != "" {
-			target.RawQuery = q
-		}
-
-		c.stream(ctx, &target)
-	}
-}
-
 // stream passes a provider resource on to the client, for as long as the
-// client stays.
+// client stays. An HLS playlist is rewritten on the way, so that everything
+// it names is asked to the proxy.
 func (c *Config) stream(ctx *gin.Context, oriURL *url.URL) {
 	resp, err := c.upstream(ctx, c.client, oriURL.String(), true)
 	if err != nil {
@@ -75,7 +72,81 @@ func (c *Config) stream(ctx *gin.Context, oriURL *url.URL) {
 	}
 	defer resp.Body.Close() // nolint: errcheck
 
-	c.passOn(ctx, resp)
+	// Media or playlist: the first bytes tell, whatever the address and
+	// the content type say.
+	body := bufio.NewReaderSize(resp.Body, sniffBytes)
+	start, _ := body.Peek(sniffBytes) // a short or failing body is passed on as it is
+	resp.Body = struct {
+		io.Reader
+		io.Closer
+	}{body, resp.Body}
+
+	if !hls.IsPlaylist(start) {
+		c.passOn(ctx, resp)
+		return
+	}
+
+	playlist, err := io.ReadAll(io.LimitReader(resp.Body, maxPlaylistBytes+1))
+	if err != nil {
+		c.upstreamError(ctx, withoutURL(err))
+		return
+	}
+	if len(playlist) > maxPlaylistBytes {
+		ctx.AbortWithError(http.StatusBadGateway, errors.New("the provider's playlist is too large")) // nolint: errcheck
+		return
+	}
+
+	// Addresses are relative to where the playlist really came from, after
+	// the provider's redirects.
+	rewritten := hls.Rewrite(playlist, resp.Request.URL, c.hlsAddress)
+
+	// The provider's headers describe its own bytes, not the rewritten
+	// ones: a player trusting the original size would cut the playlist.
+	for _, name := range []string{"Content-Length", "Content-Range", "Accept-Ranges", "Etag", "Content-Md5"} {
+		resp.Header.Del(name)
+	}
+	status := resp.StatusCode
+	if status == http.StatusPartialContent {
+		// The whole playlist is sent, whatever range was asked ("bytes=0-"
+		// is what players send).
+		status = http.StatusOK
+	}
+	mergeHttpHeader(ctx.Writer.Header(), resp.Header)
+	ctx.Data(status, resp.Header.Get("Content-Type"), rewritten)
+}
+
+// hlsAddress is where the proxy serves an address found in an HLS playlist:
+// "<endpoint>/hls/<token>/<name>". The name is only there for players that
+// look at the extension. The address has no host: the player asks the host
+// it got the playlist from.
+func (c *Config) hlsAddress(address *url.URL) string {
+	name := path.Base(address.Path)
+	if name == "" || name == "." || name == "/" {
+		name = "stream"
+	}
+
+	prefix := strings.Trim(c.CustomEndpoint, "/")
+	if prefix != "" {
+		prefix = "/" + prefix
+	}
+	return prefix + "/hls/" + c.tokens.seal(address.String()) + "/" + url.PathEscape(name)
+}
+
+// hlsStream serves an address named by a playlist the proxy rewrote. The
+// token is the right to fetch it: only the proxy can have issued it.
+func (c *Config) hlsStream(ctx *gin.Context) {
+	address, err := c.tokens.open(ctx.Param("token"))
+	if err != nil {
+		ctx.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	target, err := url.Parse(address)
+	if err != nil {
+		ctx.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+
+	c.stream(ctx, target)
 }
 
 // passOn copies a provider response to the client.
@@ -111,6 +182,8 @@ func (c *Config) upstream(ctx *gin.Context, client *http.Client, rawURL string, 
 
 	if forwardHeaders {
 		mergeHttpHeader(req.Header, ctx.Request.Header)
+		// Media is not compressed, and a playlist must be readable.
+		req.Header.Del("Accept-Encoding")
 	}
 	req.Header.Set("User-Agent", c.upstreamUserAgent(ctx.Request.UserAgent()))
 

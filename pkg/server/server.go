@@ -72,17 +72,16 @@ type Config struct {
 
 	endpointAntiColision string
 
-	// client follows redirects, noRedirect hands them back: both for
-	// streams. apiClient is for the provider's API, playlists and guide.
-	client     *http.Client
-	noRedirect *http.Client
-	apiClient  *http.Client
+	// client is for streams, apiClient for the provider's API, playlists
+	// and guide. Both follow redirects.
+	client    *http.Client
+	apiClient *http.Client
+
+	// tokens name the addresses found in HLS playlists.
+	tokens *addressTokens
 
 	m3uCacheLock sync.Mutex
 	m3uCache     map[string]cachedM3U
-
-	hlsRedirectsLock sync.RWMutex
-	hlsRedirects     map[string]url.URL
 }
 
 type cachedM3U struct {
@@ -111,16 +110,19 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 		playlist:             &m3u.Playlist{},
 		endpointAntiColision: strings.Trim(config.CustomId, "/"),
 		client:               &http.Client{Transport: transport},
-		noRedirect: &http.Client{
-			Transport: transport,
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		},
-		apiClient:    &http.Client{Transport: newTransport(apiHeaderTimeout)},
-		m3uCache:     map[string]cachedM3U{},
-		hlsRedirects: map[string]url.URL{},
+		apiClient:            &http.Client{Transport: newTransport(apiHeaderTimeout)},
+		m3uCache:             map[string]cachedM3U{},
 	}
+	remote := ""
+	if config.RemoteURL != nil {
+		remote = config.RemoteURL.String()
+	}
+	tokens, err := newAddressTokens(config.User.String(), config.Password.String(), config.XtreamUser.String(), config.XtreamPassword.String(), config.XtreamBaseURL, remote)
+	if err != nil {
+		return nil, err
+	}
+	c.tokens = tokens
+
 	if c.endpointAntiColision == "" {
 		id := make([]byte, 4)
 		if _, err := rand.Read(id); err != nil {

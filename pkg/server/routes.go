@@ -21,13 +21,15 @@ package server
 import (
 	"fmt"
 	"net/url"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
 func (c *Config) routes(r *gin.RouterGroup) {
 	r = r.Group(c.CustomEndpoint)
+
+	// What HLS playlists name, whatever the provider (see hlsAddress).
+	r.GET("/hls/:token/:name", c.hlsStream)
 
 	// Xtream service endpoints
 	if c.XtreamBaseURL != "" {
@@ -60,8 +62,6 @@ func (c *Config) xtreamRoutes(r *gin.RouterGroup) {
 	r.GET(fmt.Sprintf("/timeshift/%s/%s/:duration/:start/:id", c.User, c.Password), c.xtreamStreamTimeshift)
 	r.GET(fmt.Sprintf("/movie/%s/%s/:id", c.User, c.Password), c.xtreamStreamMovie)
 	r.GET(fmt.Sprintf("/series/%s/%s/:id", c.User, c.Password), c.xtreamStreamSeries)
-	r.GET(fmt.Sprintf("/hlsr/:token/%s/%s/:channel/:hash/:chunk", c.User, c.Password), c.xtreamHlsrStream)
-	r.GET("/hls/:token/:chunk", c.xtreamHlsStream)
 	r.GET("/play/:token/:type", c.xtreamStreamPlay)
 }
 
@@ -76,13 +76,8 @@ func (c *Config) m3uRoutes(r *gin.RouterGroup) {
 			continue // proxify() only keeps tracks with a valid address
 		}
 
-		route := fmt.Sprintf("/%s/%s/%s/%d/:id", c.endpointAntiColision, c.User, c.Password, i)
-		if strings.HasSuffix(trackURL.Path, ".m3u8") {
-			// An HLS playlist names its segments relative to itself: they
-			// are asked for next to it.
-			r.GET(route, c.m3u8ReverseProxy(trackURL))
-		} else {
-			r.GET(route, c.reverseProxy(trackURL))
-		}
+		// The last element is the track's file name, there for players that
+		// look at the extension.
+		r.GET(fmt.Sprintf("/%s/%s/%s/%d/:id", c.endpointAntiColision, c.User, c.Password, i), c.reverseProxy(trackURL))
 	}
 }

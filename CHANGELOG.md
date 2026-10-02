@@ -1,5 +1,34 @@
 # Changelog
 
+## 3.9.0 (unreleased)
+
+### Fixed
+
+- **HLS works whatever the provider.** Every address an HLS playlist names
+  (variant playlists, segments, keys, initialization sections, alternate
+  audio) is now served by the proxy, on any host and after any redirect,
+  with its query string. It used to work only for one provider's address
+  scheme; anything else ended in a 404. This covers Xtream streams asked as
+  `.m3u8` and M3U tracks alike. (related: #168, #135, #157)
+- A playlist asked with `Range: bytes=0-`, as players do, is no longer cut
+  short.
+
+### Changed
+
+- Addresses in HLS playlists are opaque: `/hls/<token>/<name>`. The token is
+  the provider's address, encrypted with a key derived from the proxy's
+  configuration. A client never sees the provider's host, credentials or
+  session tokens, and cannot make the proxy fetch an address of its own.
+  Nothing is stored: tokens stay valid across restarts.
+- The provider-specific routes `/hlsr/...` and the previous `/hls/...` are
+  gone; a player holding a playlist from an older version just reloads it.
+
+### Internal
+
+- New `pkg/hls` package (playlist rewriting), fuzzed in CI.
+- Checked with ffmpeg as a player on public test streams (MPEG-TS and fMP4
+  master playlists).
+
 ## 3.8.0
 
 A maintenance release: the same proxy and the same options, on a base that
