@@ -46,12 +46,11 @@ import (
 // for the local network only. In exchange, nothing it answers holds the
 // proxy's or the provider's credentials.
 
-const (
-	defaultTuners = 2
-	// lineupStale is how old a channel list may be when a stream is asked
-	// for a number it does not have.
-	lineupStale = time.Minute
-)
+const defaultTuners = 2
+
+// lineupStale is how old a channel list may be when a stream is asked for a
+// channel it does not have: older, the list is read again.
+var lineupStale = time.Minute
 
 // tunerChannel is a channel of the tuner.
 type tunerChannel struct {
@@ -205,7 +204,7 @@ func (c *Config) xtreamTunerChannels(ctx *gin.Context) ([]tunerChannel, error) {
 	seen := map[string]bool{}
 	for _, stream := range streams {
 		id := xtream.Text(stream["stream_id"])
-		if id == "" || seen[id] || !c.keepStream(stream, groups) {
+		if id == "" || seen[id] || !keepStream(stream, groups, c.rules) {
 			continue
 		}
 		seen[id] = true

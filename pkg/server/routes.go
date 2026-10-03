@@ -71,12 +71,16 @@ func (c *Config) xtreamRoutes(r *gin.RouterGroup) {
 	r.GET("/player_api.php", c.authenticate, c.xtreamPlayerAPI)
 	r.POST("/player_api.php", c.authenticate, c.xtreamPlayerAPI)
 	r.GET("/xmltv.php", c.authenticate, c.xtreamXMLTV)
-	r.GET(fmt.Sprintf("/%s/%s/:id", c.User, c.Password), c.xtreamStreamHandler)
-	r.GET(fmt.Sprintf("/live/%s/%s/:id", c.User, c.Password), c.xtreamStreamLive)
-	r.GET(fmt.Sprintf("/timeshift/%s/%s/:duration/:start/:id", c.User, c.Password), c.xtreamStreamTimeshift)
-	r.GET(fmt.Sprintf("/movie/%s/%s/:id", c.User, c.Password), c.xtreamStreamMovie)
-	r.GET(fmt.Sprintf("/series/%s/%s/:id", c.User, c.Password), c.xtreamStreamSeries)
 	r.GET("/play/:token/:type", c.xtreamStreamPlay)
+
+	// Streams name their user in their path: each user has their own.
+	for _, u := range c.users {
+		r.GET(fmt.Sprintf("/%s/%s/:id", u.name, u.password), as(u), c.limit, c.xtreamStreamHandler)
+		r.GET(fmt.Sprintf("/live/%s/%s/:id", u.name, u.password), as(u), c.limit, c.xtreamStreamLive)
+		r.GET(fmt.Sprintf("/timeshift/%s/%s/:duration/:start/:id", u.name, u.password), as(u), c.limit, c.xtreamStreamTimeshift)
+		r.GET(fmt.Sprintf("/movie/%s/%s/:id", u.name, u.password), as(u), c.limit, c.xtreamStreamMovie)
+		r.GET(fmt.Sprintf("/series/%s/%s/:id", u.name, u.password), as(u), c.limit, c.xtreamStreamSeries)
+	}
 }
 
 func (c *Config) m3uRoutes(r *gin.RouterGroup) {
@@ -87,5 +91,7 @@ func (c *Config) m3uRoutes(r *gin.RouterGroup) {
 
 	// The last element is the track's file name, there for players that
 	// look at the extension.
-	r.GET(fmt.Sprintf("/%s/%s/%s/:track/:name", c.endpointAntiColision, c.User, c.Password), c.m3uTrack)
+	for _, u := range c.users {
+		r.GET(fmt.Sprintf("/%s/%s/%s/:track/:name", c.endpointAntiColision, u.name, u.password), as(u), c.limit, c.m3uTrack)
+	}
 }

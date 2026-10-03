@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/viper"
 
+	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/config"
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/filter"
 )
 
@@ -19,7 +20,7 @@ func load(t *testing.T, env map[string]string) {
 		t.Setenv("HOME", t.TempDir())
 	}
 	t.Chdir(t.TempDir())
-	for _, name := range []string{"USER", "PASSWORD", "HOSTNAME", "PROXY_USER", "PROXY_PASSWORD", "PROXY_HOSTNAME", "PORT", "M3U_URL", "XTREAM_USER", "XTREAM_PASSWORD", "XTREAM_BASE_URL", "ADVERTISED_PORT", "HTTPS", "USER_AGENT", "XTREAM_API_GET", "XTREAM_API_GET_MOVIES", "NO_STREAM_SHARING", "GROUP_REGEX", "CHANNEL_REGEX", "GROUP_EXCLUDE_REGEX", "CHANNEL_EXCLUDE_REGEX", "LISTEN_ADDRESS", "XMLTV_URL"} {
+	for _, name := range []string{"USER", "PASSWORD", "HOSTNAME", "PROXY_USER", "PROXY_PASSWORD", "PROXY_HOSTNAME", "PORT", "M3U_URL", "XTREAM_USER", "XTREAM_PASSWORD", "XTREAM_BASE_URL", "ADVERTISED_PORT", "HTTPS", "USER_AGENT", "XTREAM_API_GET", "XTREAM_API_GET_MOVIES", "NO_STREAM_SHARING", "GROUP_REGEX", "CHANNEL_REGEX", "GROUP_EXCLUDE_REGEX", "CHANNEL_EXCLUDE_REGEX", "LISTEN_ADDRESS", "XMLTV_URL", "MAX_CONNECTIONS", "IPTV_PROXY_CONFIG"} {
 		t.Setenv(name, "")
 		os.Unsetenv(name) // nolint: errcheck
 	}
@@ -245,5 +246,65 @@ func TestConfigurationFileWinsOverTheSystemsVariables(t *testing.T) {
 	load(t, map[string]string{"HOME": home, "USER": "old"})
 	if got := setting(rootCmd, "user"); got != "old" {
 		t.Errorf("user = %q, want USER's", got)
+	}
+}
+
+const usersFile = `users:
+  - name: family
+    password: secret
+    max-connections: 2
+  - name: kids
+    password: other
+    group-regex: "(?i)kids"
+    channel-exclude-regex: "(?i)adult"
+`
+
+// The users of the configuration file, found through IPTV_PROXY_CONFIG.
+func TestUsersFromTheConfigurationFile(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(file, []byte(usersFile), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	load(t, map[string]string{"IPTV_PROXY_CONFIG": file, "MAX_CONNECTIONS": "3"})
+	t.Cleanup(func() { cfgFile = "" })
+
+	conf, err := proxyConfig(rootCmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []config.User{
+		{Name: "family", Password: "secret", MaxConnections: 2},
+		{Name: "kids", Password: "other", Filter: filter.Patterns{Group: "(?i)kids", ChannelExclude: "(?i)adult"}},
+	}
+	if len(conf.Users) != len(want) {
+		t.Fatalf("users: %+v", conf.Users)
+	}
+	for i := range want {
+		if conf.Users[i] != want[i] {
+			t.Errorf("user %d: %+v, want %+v", i, conf.Users[i], want[i])
+		}
+	}
+	if conf.MaxConnections != 3 {
+		t.Errorf("max connections = %d", conf.MaxConnections)
+	}
+}
+
+func TestUsersWithAnInvalidFilter(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(file, []byte("users:\n  - name: kids\n    password: x\n    group-regex: \"(kids\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	load(t, map[string]string{"IPTV_PROXY_CONFIG": file})
+	t.Cleanup(func() { cfgFile = "" })
+	if _, err := proxyConfig(rootCmd); err == nil || !strings.Contains(err.Error(), `user "kids"`) || !strings.Contains(err.Error(), "--group-regex") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestNoUsersWithoutAFile(t *testing.T) {
+	load(t, map[string]string{})
+	conf, err := proxyConfig(rootCmd)
+	if err != nil || len(conf.Users) != 0 || conf.MaxConnections != 0 {
+		t.Errorf("users %+v, max %d, err %v", conf.Users, conf.MaxConnections, err)
 	}
 }

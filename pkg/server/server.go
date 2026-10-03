@@ -102,6 +102,12 @@ type Config struct {
 
 	// tuner is the HDHomeRun tuner's state.
 	tuner tuner
+
+	// users are the proxy's users, the first one first.
+	users       []*proxyUser
+	usersByName map[string]*proxyUser
+	// liveAccess are the live streams users with filters may watch.
+	liveAccess liveAccess
 }
 
 type cachedM3U struct {
@@ -137,13 +143,18 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 	if config.RemoteURL != nil {
 		remote = config.RemoteURL.String()
 	}
-	tokens, err := newAddressTokens(config.User.String(), config.Password.String(), config.XtreamUser.String(), config.XtreamPassword.String(), config.XtreamBaseURL, remote)
-	if err != nil {
+
+	var err error
+	if c.rules, err = filter.New(config.Filter); err != nil {
 		return nil, err
 	}
-	c.tokens = tokens
-
-	if c.rules, err = filter.New(config.Filter); err != nil {
+	if err := c.setupUsers(); err != nil {
+		return nil, err
+	}
+	// Tokens and track addresses derive from the first user's credentials:
+	// with a single user, they stay what they were.
+	first := c.users[0]
+	if c.tokens, err = newAddressTokens(first.name.String(), first.password.String(), config.XtreamUser.String(), config.XtreamPassword.String(), config.XtreamBaseURL, remote); err != nil {
 		return nil, err
 	}
 
@@ -158,7 +169,7 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 	if c.endpointAntiColision == "" {
 		// The same settings give the same track addresses, restart after
 		// restart.
-		sum := sha256.Sum256([]byte("iptv-proxy track prefix\x00" + config.User.String() + "\x00" + config.Password.String() + "\x00" + remote))
+		sum := sha256.Sum256([]byte("iptv-proxy track prefix\x00" + first.name.String() + "\x00" + first.password.String() + "\x00" + remote))
 		c.endpointAntiColision = hex.EncodeToString(sum[:4])
 	}
 
@@ -194,32 +205,6 @@ func (c *Config) accessLog(p gin.LogFormatterParams) string {
 		c.maskCredentials(p.Path),
 		p.ErrorMessage,
 	)
-}
-
-// maskCredentials hides the proxy's user and password in a request address.
-func (c *Config) maskCredentials(address string) string {
-	path, query, hasQuery := strings.Cut(address, "?")
-
-	segments := strings.Split(path, "/")
-	for i, segment := range segments {
-		for _, secret := range []config.CredentialString{c.User, c.Password} {
-			if secret != "" && (segment == secret.String() || segment == secret.PathEscape()) {
-				segments[i] = "***"
-			}
-		}
-	}
-	path = strings.Join(segments, "/")
-	if !hasQuery {
-		return path
-	}
-
-	params := strings.Split(query, "&")
-	for i, param := range params {
-		if name, _, hasValue := strings.Cut(param, "="); hasValue && (name == "username" || name == "password") {
-			params[i] = name + "=***"
-		}
-	}
-	return path + "?" + strings.Join(params, "&")
 }
 
 // Serve runs the proxy, and the HDHomeRun tuner when it has a port. It
@@ -306,24 +291,24 @@ func (c *Config) loadPlaylist(ctx context.Context, source, userAgent string) (*m
 // playlist as clients get it: the same lines, each address replaced by the
 // proxy's, and nothing else naming the provider. A track the filters leave
 // out, or with an unusable address, is dropped from both.
-func (c *Config) proxify(playlist *m3u.Playlist, fromXtream bool) (*m3u.Playlist, []byte) {
+func (c *Config) proxify(playlist *m3u.Playlist, fromXtream bool, u *proxyUser) (*m3u.Playlist, []byte) {
 	kept := &m3u.Playlist{Header: playlist.Header, Tracks: make([]m3u.Track, 0, len(playlist.Tracks))}
-	out := &m3u.Playlist{Header: c.hideProvider(playlist.Header, fromXtream), Tracks: make([]m3u.Track, 0, len(playlist.Tracks))}
+	out := &m3u.Playlist{Header: c.hideProvider(playlist.Header, fromXtream, u), Tracks: make([]m3u.Track, 0, len(playlist.Tracks))}
 	if !fromXtream {
-		out.Header = c.m3uHeader(playlist.Header, out.Header)
+		out.Header = c.m3uHeader(playlist.Header, out.Header, u)
 	}
 
 	for _, track := range playlist.Tracks {
-		if c.rules.Active() && !c.keepTrack(track) {
+		if u.rules.Active() && !keepTrack(track, u.rules) {
 			continue
 		}
-		uri, err := c.replaceURL(track.URI, fromXtream)
+		uri, err := c.replaceURL(track.URI, fromXtream, u)
 		if err != nil {
 			log.Printf("[iptv-proxy] ERROR: track %q dropped: invalid address", track.Name())
 			continue
 		}
 		kept.Tracks = append(kept.Tracks, track)
-		proxied := c.hideProviderInTrack(track, fromXtream)
+		proxied := c.hideProviderInTrack(track, fromXtream, u)
 		proxied.URI = uri
 		out.Tracks = append(out.Tracks, proxied)
 	}
@@ -352,14 +337,10 @@ func (c *Config) providerAccount() xtream.Account {
 	return xtream.Account{BaseURL: c.XtreamBaseURL, User: c.XtreamUser.String(), Password: c.XtreamPassword.String()}
 }
 
-func (c *Config) proxyAccount() xtream.Account {
-	return xtream.Account{BaseURL: c.proxyBaseURL(), User: c.User.String(), Password: c.Password.String()}
-}
-
 // replaceURL returns the proxy's address of a track: the same path with the
 // proxy's credentials for an Xtream stream, else
 // "<custom-id>/<user>/<password>/<track key>/<file name>".
-func (c *Config) replaceURL(uri string, xtream bool) (string, error) {
+func (c *Config) replaceURL(uri string, xtream bool, u *proxyUser) (string, error) {
 	oriURL, err := url.Parse(uri)
 	if err != nil {
 		return "", err
@@ -370,11 +351,11 @@ func (c *Config) replaceURL(uri string, xtream bool) (string, error) {
 		uriPath = strings.Replace(
 			uriPath,
 			"/"+c.XtreamUser.PathEscape()+"/"+c.XtreamPassword.PathEscape()+"/",
-			"/"+c.User.PathEscape()+"/"+c.Password.PathEscape()+"/",
+			"/"+u.name.PathEscape()+"/"+u.password.PathEscape()+"/",
 			1,
 		)
 	} else {
-		uriPath = path.Join("/", c.endpointAntiColision, c.User.PathEscape(), c.Password.PathEscape(), trackKey(uri), path.Base(uriPath))
+		uriPath = path.Join("/", c.endpointAntiColision, u.name.PathEscape(), u.password.PathEscape(), trackKey(uri), path.Base(uriPath))
 	}
 
 	base, err := url.Parse(c.proxyBaseURL())

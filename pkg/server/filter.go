@@ -19,12 +19,15 @@
 package server
 
 import (
+	"net/http"
+	"path"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/filter"
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/m3u"
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/xtream"
 )
@@ -63,9 +66,9 @@ func (c *Config) liveGroupNames(ctx *gin.Context) (map[string]string, error) {
 	return names, nil
 }
 
-// keepStream tells whether a live stream of the API is kept. A stream may
+// keepStream tells whether rules keep a live stream of the API. A stream may
 // name several categories; it is kept when one of them is.
-func (c *Config) keepStream(stream map[string]any, groups map[string]string) bool {
+func keepStream(stream map[string]any, groups map[string]string, rules *filter.Rules) bool {
 	name := xtream.Text(stream["name"])
 	ids := []string{xtream.Text(stream["category_id"])}
 	if more, ok := stream["category_ids"].([]any); ok {
@@ -74,7 +77,7 @@ func (c *Config) keepStream(stream map[string]any, groups map[string]string) boo
 		}
 	}
 	for _, id := range ids {
-		if c.rules.Keep(groups[id], name) {
+		if rules.Keep(groups[id], name) {
 			return true
 		}
 	}
@@ -84,33 +87,34 @@ func (c *Config) keepStream(stream map[string]any, groups map[string]string) boo
 // filterAPIList drops, from an answer of the API, the live categories and
 // streams the filters leave out. Other answers are returned as they are.
 func (c *Config) filterAPIList(ctx *gin.Context, action string, body []byte) ([]byte, error) {
-	if !c.rules.Active() {
+	rules := userOf(ctx).rules
+	if !rules.Active() {
 		return body, nil
 	}
 	switch action {
 	case "get_live_categories":
 		return xtream.FilterList(body, func(category map[string]any) bool {
-			return c.rules.Group(xtream.Text(category["category_name"]))
+			return rules.Group(xtream.Text(category["category_name"]))
 		})
 	case "get_live_streams":
 		var groups map[string]string
-		if c.rules.FiltersGroups() {
+		if rules.FiltersGroups() {
 			var err error
 			if groups, err = c.liveGroupNames(ctx); err != nil {
 				return nil, err
 			}
 		}
 		return xtream.FilterList(body, func(stream map[string]any) bool {
-			return c.keepStream(stream, groups)
+			return keepStream(stream, groups, rules)
 		})
 	}
 	return body, nil
 }
 
-// guideChannels returns the guide ids of the live streams the filters keep.
-func (c *Config) guideChannels(ctx *gin.Context) (map[string]bool, error) {
+// guideChannels returns the guide ids of the live streams rules keep.
+func (c *Config) guideChannels(ctx *gin.Context, rules *filter.Rules) (map[string]bool, error) {
 	var groups map[string]string
-	if c.rules.FiltersGroups() {
+	if rules.FiltersGroups() {
 		var err error
 		if groups, err = c.liveGroupNames(ctx); err != nil {
 			return nil, err
@@ -122,16 +126,16 @@ func (c *Config) guideChannels(ctx *gin.Context) (map[string]bool, error) {
 	}
 	kept := map[string]bool{}
 	for _, stream := range streams {
-		if id := xtream.Text(stream["epg_channel_id"]); id != "" && c.keepStream(stream, groups) {
+		if id := xtream.Text(stream["epg_channel_id"]); id != "" && keepStream(stream, groups, rules) {
 			kept[id] = true
 		}
 	}
 	return kept, nil
 }
 
-// keepTrack tells whether a playlist track is kept.
-func (c *Config) keepTrack(track m3u.Track) bool {
-	return c.rules.Keep(track.Group(), track.Name())
+// keepTrack tells whether rules keep a playlist track.
+func keepTrack(track m3u.Track, rules *filter.Rules) bool {
+	return rules.Keep(track.Group(), track.Name())
 }
 
 // providerSecret is the account whose password must not reach a client: the
@@ -153,9 +157,9 @@ func (c *Config) providerSecret() xtream.Account {
 // there (a guide in url-tvg, catch-up in catchup-source) become the proxy's.
 // An address that would still give the provider's password away is removed:
 // the attribute, or the whole directive. It returns "" for a line to drop.
-func (c *Config) hideProvider(line string, fromXtream bool) string {
+func (c *Config) hideProvider(line string, fromXtream bool, u *proxyUser) string {
 	if fromXtream {
-		line = string(xtream.Sanitize([]byte(line), c.providerAccount(), c.proxyAccount()))
+		line = string(xtream.Sanitize([]byte(line), c.providerAccount(), c.proxyAccount(u)))
 	}
 	secret := c.providerSecret()
 	if !xtream.Leaks(line, secret) {
@@ -173,14 +177,93 @@ func (c *Config) hideProvider(line string, fromXtream bool) string {
 }
 
 // hideProviderInTrack applies hideProvider to the lines of a track.
-func (c *Config) hideProviderInTrack(track m3u.Track, fromXtream bool) m3u.Track {
-	track.ExtInf = c.logosInLine(c.hideProvider(track.ExtInf, fromXtream))
+func (c *Config) hideProviderInTrack(track m3u.Track, fromXtream bool, u *proxyUser) m3u.Track {
+	track.ExtInf = c.logosInLine(c.hideProvider(track.ExtInf, fromXtream, u))
 	extra := make([]string, 0, len(track.Extra))
 	for _, line := range track.Extra {
-		if line = c.hideProvider(line, fromXtream); line != "" {
+		if line = c.hideProvider(line, fromXtream, u); line != "" {
 			extra = append(extra, line)
 		}
 	}
 	track.Extra = extra
 	return track
+}
+
+// liveAccess are, for each set of filters, the live streams they keep: a
+// user with filters only watches those, whatever the address asked.
+type liveAccess struct {
+	mu   sync.Mutex
+	sets map[string]accessSet
+}
+
+type accessSet struct {
+	ids map[string]bool
+	at  time.Time
+}
+
+// mayWatch tells whether a user may watch a live stream of the provider.
+func (c *Config) mayWatch(ctx *gin.Context, u *proxyUser, id string) (bool, error) {
+	if !u.rules.Active() {
+		return true, nil
+	}
+	id = strings.TrimSuffix(id, path.Ext(id))
+	key := u.rules.String()
+
+	c.liveAccess.mu.Lock()
+	defer c.liveAccess.mu.Unlock()
+	set := c.liveAccess.sets[key]
+	age := time.Since(set.at)
+	fresh := set.ids != nil && age < time.Duration(c.M3UCacheExpiration)*time.Hour
+	// A stream not in a recent list stays refused; one not in an older
+	// list may be new: the list is read again.
+	if fresh && (set.ids[id] || age < lineupStale) {
+		return set.ids[id], nil
+	}
+
+	var groups map[string]string
+	if u.rules.FiltersGroups() {
+		var err error
+		if groups, err = c.liveGroupNames(ctx); err != nil {
+			return set.ids[id], keepOld(set, err)
+		}
+	}
+	streams, err := c.providerList(ctx, "get_live_streams")
+	if err != nil {
+		return set.ids[id], keepOld(set, err)
+	}
+	ids := map[string]bool{}
+	for _, stream := range streams {
+		if keepStream(stream, groups, u.rules) {
+			ids[xtream.Text(stream["stream_id"])] = true
+		}
+	}
+	if c.liveAccess.sets == nil {
+		c.liveAccess.sets = map[string]accessSet{}
+	}
+	c.liveAccess.sets[key] = accessSet{ids: ids, at: time.Now()}
+	return ids[id], nil
+}
+
+// keepOld says whether a list that could not be read again is an error: not
+// when there is a previous one to go by.
+func keepOld(set accessSet, err error) error {
+	if set.ids != nil {
+		return nil
+	}
+	return err
+}
+
+// allowLive answers the request itself and returns false when its user may
+// not watch the live stream id.
+func (c *Config) allowLive(ctx *gin.Context, id string) bool {
+	ok, err := c.mayWatch(ctx, userOf(ctx), id)
+	switch {
+	case err != nil:
+		c.upstreamError(ctx, err)
+		return false
+	case !ok:
+		ctx.AbortWithStatus(http.StatusNotFound)
+		return false
+	}
+	return true
 }

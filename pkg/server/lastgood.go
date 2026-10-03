@@ -204,6 +204,12 @@ func answerKey(endpoint string, params url.Values) string {
 	return b.String()
 }
 
+// userAnswerKey names a user's request: answers hold the user's
+// credentials, and filters may differ from one user to the next.
+func userAnswerKey(u *proxyUser, endpoint string, params url.Values) string {
+	return u.name.String() + "\x00" + answerKey(endpoint, params)
+}
+
 // requestName is how a request is named in a log line: its path and action,
 // without credentials.
 func requestName(ctx *gin.Context) string {

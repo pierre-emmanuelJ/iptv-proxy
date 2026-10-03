@@ -126,7 +126,13 @@ func proxyConfig(cmd *cobra.Command) (*config.ProxyConfig, error) {
 		ProxyLogos:      viper.GetBool("proxy-logos"),
 		HDHomeRunPort:   viper.GetInt("hdhomerun-port"),
 		HDHomeRunTuners: viper.GetInt("hdhomerun-tuners"),
+		MaxConnections:  viper.GetInt("max-connections"),
 	}
+	users, err := configUsers()
+	if err != nil {
+		return nil, err
+	}
+	conf.Users = users
 	// An invalid expression is reported before anything starts.
 	if _, err := filter.New(conf.Filter); err != nil {
 		return nil, err
@@ -137,6 +143,35 @@ func proxyConfig(cmd *cobra.Command) (*config.ProxyConfig, error) {
 	}
 
 	return conf, nil
+}
+
+// fileUser is a user as the configuration file writes it, with the names
+// of the options.
+type fileUser struct {
+	Name                string `mapstructure:"name"`
+	Password            string `mapstructure:"password"`
+	MaxConnections      int    `mapstructure:"max-connections"`
+	GroupRegex          string `mapstructure:"group-regex"`
+	ChannelRegex        string `mapstructure:"channel-regex"`
+	GroupExcludeRegex   string `mapstructure:"group-exclude-regex"`
+	ChannelExcludeRegex string `mapstructure:"channel-exclude-regex"`
+}
+
+// configUsers reads the users of the configuration file, if any.
+func configUsers() ([]config.User, error) {
+	var listed []fileUser
+	if err := viper.UnmarshalKey("users", &listed); err != nil {
+		return nil, fmt.Errorf("users in the configuration file: %w", err)
+	}
+	users := make([]config.User, 0, len(listed))
+	for _, u := range listed {
+		patterns := filter.Patterns{Group: u.GroupRegex, Channel: u.ChannelRegex, GroupExclude: u.GroupExcludeRegex, ChannelExclude: u.ChannelExcludeRegex}
+		if _, err := filter.New(patterns); err != nil {
+			return nil, fmt.Errorf("user %q: %w", u.Name, err)
+		}
+		users = append(users, config.User{Name: u.Name, Password: u.Password, MaxConnections: u.MaxConnections, Filter: patterns})
+	}
+	return users, nil
 }
 
 // setting reads one of the options whose environment variable is also an
@@ -199,6 +234,7 @@ func init() {
 	rootCmd.Flags().BoolP("https", "", false, "Activate https for urls proxy")
 	rootCmd.Flags().String("user", "usertest", "User auth to access proxy (m3u/xtream)")
 	rootCmd.Flags().String("password", "passwordtest", "Password auth to access proxy (m3u/xtream)")
+	rootCmd.Flags().Int("max-connections", 0, "Streams the user may watch at once (0: no limit); at the limit, a new stream from the same address replaces the oldest one")
 	rootCmd.Flags().String("xtream-user", "", "Xtream-code user login")
 	rootCmd.Flags().String("xtream-password", "", "Xtream-code password login")
 	rootCmd.Flags().String("xtream-base-url", "", "Xtream-code base url e.g(http://expample.tv:8080)")
@@ -223,6 +259,10 @@ func init() {
 
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
+	if cfgFile == "" {
+		// IPTV_PROXY_CONFIG names the file where a flag is not handy (Docker)
+		cfgFile = os.Getenv("IPTV_PROXY_CONFIG")
+	}
 	if cfgFile != "" {
 		// Use config file from the flag.
 		viper.SetConfigFile(cfgFile)

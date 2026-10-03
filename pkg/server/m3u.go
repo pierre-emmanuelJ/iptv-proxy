@@ -51,19 +51,27 @@ type m3uPlaylist struct {
 }
 
 type m3uState struct {
-	// tracks are the provider's addresses, by track key. They are kept as
-	// text: a playlist may hold a million tracks.
-	tracks map[string]string
-	// body is the playlist clients get.
-	body []byte
-	// guide is the address of the guide, if any; guideIDs are the guide ids
-	// of the tracks kept.
-	guide    string
-	guideIDs map[string]bool
+	// audiences are what the users with the same filters may play, by the
+	// description of their filters.
+	audiences map[string]*m3uAudience
+	// bodies are the playlists users get, by name: each holds its user's
+	// credentials.
+	bodies map[string][]byte
+	// guide is the address of the guide, if any.
+	guide string
 	// live are the channels of the HDHomeRun tuner, when there is one.
 	live []tunerChannel
 	// next is when the playlist is read again.
 	next time.Time
+}
+
+// m3uAudience is what users with the same filters may play.
+type m3uAudience struct {
+	// tracks are the provider's addresses, by track key. They are kept as
+	// text: a playlist may hold a million tracks.
+	tracks map[string]string
+	// guideIDs are the guide ids of the tracks, when filters apply.
+	guideIDs map[string]bool
 }
 
 // trackKey names a track in the proxy's addresses. It is derived from the
@@ -84,25 +92,41 @@ func (c *Config) loadM3U(ctx context.Context) error {
 		return err
 	}
 
-	kept, body := c.proxify(playlist, false)
 	state := &m3uState{
-		tracks:   make(map[string]string, len(kept.Tracks)),
-		body:     body,
-		guide:    c.m3uGuide(playlist.Header),
-		guideIDs: map[string]bool{},
-		next:     time.Now().Add(time.Duration(c.M3UCacheExpiration) * time.Hour),
+		audiences: map[string]*m3uAudience{},
+		bodies:    map[string][]byte{},
+		guide:     c.m3uGuide(playlist.Header),
+		next:      time.Now().Add(time.Duration(c.M3UCacheExpiration) * time.Hour),
 	}
-	for _, track := range kept.Tracks {
-		state.tracks[trackKey(track.URI)] = track.URI
-		if !c.rules.Active() {
-			continue // the guide is only filtered with the playlist
+	for _, u := range c.users {
+		kept, body := c.proxify(playlist, false, u)
+		state.bodies[u.name.String()] = body
+
+		audience := u.rules.String()
+		if state.audiences[audience] != nil {
+			continue
 		}
-		if id, ok := m3u.Attribute(track.ExtInf, "tvg-id"); ok && id != "" {
-			state.guideIDs[id] = true
+		a := &m3uAudience{tracks: make(map[string]string, len(kept.Tracks)), guideIDs: map[string]bool{}}
+		for _, track := range kept.Tracks {
+			a.tracks[trackKey(track.URI)] = track.URI
+			if !u.rules.Active() {
+				continue // the guide is only filtered with the playlist
+			}
+			if id, ok := m3u.Attribute(track.ExtInf, "tvg-id"); ok && id != "" {
+				a.guideIDs[id] = true
+			}
 		}
+		state.audiences[audience] = a
 	}
 	if c.HDHomeRunPort != 0 {
-		state.live = m3uTunerChannels(kept.Tracks)
+		// the tuner has no user: the proxy's filters apply
+		var live []m3u.Track
+		for _, track := range playlist.Tracks {
+			if !c.rules.Active() || keepTrack(track, c.rules) {
+				live = append(live, track)
+			}
+		}
+		state.live = m3uTunerChannels(live)
 	}
 	c.m3u.current.Store(state)
 
@@ -135,12 +159,19 @@ func (c *Config) m3uCurrent(ctx context.Context) *m3uState {
 }
 
 func (c *Config) getM3U(ctx *gin.Context) {
-	c.serveM3U(ctx, c.m3uCurrent(ctx.Request.Context()).body)
+	c.serveM3U(ctx, c.m3uCurrent(ctx.Request.Context()).bodies[userOf(ctx).name.String()])
+}
+
+// audience is what the user of a request may play.
+func (c *Config) audience(ctx *gin.Context) (*m3uState, *m3uAudience) {
+	state := c.m3uCurrent(ctx.Request.Context())
+	return state, state.audiences[userOf(ctx).rules.String()]
 }
 
 // m3uTrack serves a track of the playlist.
 func (c *Config) m3uTrack(ctx *gin.Context) {
-	raw, ok := c.m3uCurrent(ctx.Request.Context()).tracks[ctx.Param("track")]
+	_, audience := c.audience(ctx)
+	raw, ok := audience.tracks[ctx.Param("track")]
 	if !ok {
 		ctx.AbortWithStatus(http.StatusNotFound)
 		return
@@ -178,11 +209,11 @@ func (c *Config) m3uGuide(header string) string {
 
 // m3uHeader is the header of the playlist clients get: when there is a
 // guide, it names the proxy's.
-func (c *Config) m3uHeader(original, cleaned string) string {
+func (c *Config) m3uHeader(original, cleaned string, u *proxyUser) string {
 	if c.m3uGuide(original) == "" {
 		return cleaned
 	}
-	guide := c.proxyBaseURL() + "/xmltv.php?username=" + url.QueryEscape(c.User.String()) + "&password=" + url.QueryEscape(c.Password.String())
+	guide := c.proxyBaseURL() + "/xmltv.php?username=" + url.QueryEscape(u.name.String()) + "&password=" + url.QueryEscape(u.password.String())
 
 	named := false
 	header := m3u.EditAttributes(cleaned, func(name, value string) (string, bool) {
@@ -200,14 +231,15 @@ func (c *Config) m3uHeader(original, cleaned string) string {
 
 // m3uXMLTV serves the guide of the M3U playlist.
 func (c *Config) m3uXMLTV(ctx *gin.Context) {
-	state := c.m3uCurrent(ctx.Request.Context())
+	state, audience := c.audience(ctx)
 	if state.guide == "" {
 		ctx.AbortWithStatus(http.StatusNotFound)
 		return
 	}
+	u := userOf(ctx)
 	var mapping func() (channelMap, error)
-	if c.rules.Active() {
-		mapping = func() (channelMap, error) { return keeping(state.guideIDs), nil }
+	if u.rules.Active() {
+		mapping = func() (channelMap, error) { return keeping(audience.guideIDs), nil }
 	}
-	c.guide(ctx, state.guide, answerKey("guide", ctx.Request.Form), mapping)
+	c.guide(ctx, state.guide, userAnswerKey(u, "guide", ctx.Request.Form), mapping)
 }
