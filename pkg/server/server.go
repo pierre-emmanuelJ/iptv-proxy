@@ -112,6 +112,11 @@ type Config struct {
 	// passthrough are the provider accounts clients logged in with, in
 	// passthrough mode.
 	passthrough passthrough
+
+	// sources are the Xtream accounts served as one catalogue, when there
+	// are several; merge is what the proxy keeps of that catalogue.
+	sources []*source
+	merge   merging
 	// liveAccess are the live streams users with filters may watch.
 	liveAccess liveAccess
 }
@@ -159,6 +164,9 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 		return nil, fmt.Errorf("the HDHomeRun tuner's filters: %w", err)
 	}
 	c.tunerRules = filter.Combine(c.rules, tuner)
+	if err := c.setupSources(); err != nil {
+		return nil, err
+	}
 	if err := c.setupUsers(); err != nil {
 		return nil, err
 	}
@@ -365,6 +373,26 @@ func (c *Config) proxyBaseURL() string {
 
 func (c *Config) providerAccount() xtream.Account {
 	return xtream.Account{BaseURL: c.XtreamBaseURL, User: c.XtreamUser.String(), Password: c.XtreamPassword.String()}
+}
+
+// hiddenAccounts are the accounts clients must not learn: the proxy's
+// (see hiddenAccount), and those of its other sources.
+func (c *Config) hiddenAccounts() []xtream.Account {
+	hidden := []xtream.Account{c.hiddenAccount()}
+	for _, src := range c.sources[min(1, len(c.sources)):] {
+		hidden = append(hidden, src.account)
+	}
+	return hidden
+}
+
+// leaks tells whether text gives one of the hidden accounts away.
+func (c *Config) leaks(text string) bool {
+	for _, hidden := range c.hiddenAccounts() {
+		if xtream.Leaks(text, hidden) {
+			return true
+		}
+	}
+	return false
 }
 
 // hiddenAccount is what clients must not learn from the provider's answers:

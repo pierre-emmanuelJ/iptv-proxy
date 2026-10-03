@@ -55,7 +55,7 @@ func (c *Config) proxyLogo(ctx *gin.Context) {
 		ctx.AbortWithStatus(http.StatusNotFound)
 		return
 	}
-	resp, err := c.upstream(ctx, c.apiClient, address, false)
+	resp, err := c.upstream(ctx, c.apiClient, address)
 	if err != nil {
 		c.upstreamError(ctx, err)
 		return

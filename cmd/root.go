@@ -140,6 +140,9 @@ func proxyConfig(cmd *cobra.Command) (*config.ProxyConfig, error) {
 		return nil, err
 	}
 	conf.Users = users
+	if conf.Sources, err = configSources(); err != nil {
+		return nil, err
+	}
 	// An invalid expression is reported before anything starts.
 	if _, err := filter.New(conf.Filter); err != nil {
 		return nil, err
@@ -179,6 +182,28 @@ func configUsers() ([]config.User, error) {
 		users = append(users, config.User{Name: u.Name, Password: u.Password, MaxConnections: u.MaxConnections, Filter: patterns})
 	}
 	return users, nil
+}
+
+// fileSource is a source as the configuration file writes it.
+type fileSource struct {
+	Name           string `mapstructure:"name"`
+	XtreamBaseURL  string `mapstructure:"xtream-base-url"`
+	XtreamUser     string `mapstructure:"xtream-user"`
+	XtreamPassword string `mapstructure:"xtream-password"`
+	MaxConnections int    `mapstructure:"max-connections"`
+}
+
+// configSources reads the sources of the configuration file, if any.
+func configSources() ([]config.Source, error) {
+	var listed []fileSource
+	if err := viper.UnmarshalKey("sources", &listed); err != nil {
+		return nil, fmt.Errorf("sources in the configuration file: %w", err)
+	}
+	sources := make([]config.Source, 0, len(listed))
+	for _, s := range listed {
+		sources = append(sources, config.Source(s))
+	}
+	return sources, nil
 }
 
 // setting reads one of the options whose environment variable is also an

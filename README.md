@@ -405,6 +405,45 @@ docker run -d --name iptv-proxy -p 8080:8080 \
   it, and the proxy says so at startup. `--user` and `--password` are not
   used.
 
+## Several sources
+
+A second account, at the same provider or another, can back up the first:
+list it under `sources` in the configuration file. The proxy then serves
+both accounts as one catalogue.
+
+```yaml
+# /config/iptv-proxy.yaml
+sources:
+  - name: backup
+    xtream-base-url: http://other-provider.example:8080
+    xtream-user: other_user
+    xtream-password: other_password
+    max-connections: 1   # optional: the account's own limit by default
+```
+
+The Xtream options (`XTREAM_BASE_URL`, `XTREAM_USER`, `XTREAM_PASSWORD`)
+stay the first source; without them, the first of `sources` is.
+
+- **Ids.** The first source keeps its ids: the players set up before see
+  the same channels under the same numbers. The second source's ids are
+  shown as 100000000 + id, the third's as 200000000 + id, and so on.
+- **Categories of the same name are one**, with the first source's id.
+- **A live channel several sources have is shown once**, from the first of
+  them. Channels are recognised by their guide id (`epg_channel_id`): a
+  channel without one is shown from each source.
+- **Failover.** When a live channel fails at its source (an error, an HTTP
+  error), the proxy opens it at the next source that has it. A source
+  already holding as many streams as its account allows is passed over:
+  its channels play from another source while its connections are busy.
+- Movies and series of every source are listed, each from its own source.
+- The guide is the first source's, plus the channels only the other sources
+  have. The playlist (`get.php`, `iptv.m3u`) is built from the merged
+  catalogue, as with `--xtream-api-get`.
+- A source that does not answer is left out of the lists for that request;
+  the last complete answer is served instead when there is one.
+- Sources are Xtream accounts: they do not go with `--m3u-url` or with
+  `--xtream-passthrough`.
+
 ## Plex and other media servers
 
 With `--hdhomerun-port`, the proxy also answers as an HDHomeRun network tuner
@@ -559,14 +598,12 @@ docker compose up -d
   mapping. Players get what the provider sends.
 - It does not transcode, record or cache streams: they are passed on as they
   come.
-- It has one provider.
 - It has no web interface.
 
 ## Roadmap
 
 Planned, not available yet:
 
-- Several providers behind one proxy, with failover.
 - Optional ffmpeg profiles, and a read-only status page.
 
 See the [changelog](CHANGELOG.md) for what each release brought.

@@ -151,9 +151,63 @@ func FuzzFilter(f *testing.F) {
 		}
 		// renaming and copying every channel never breaks on any input
 		_ = Map(io.Discard, strings.NewReader(doc), func(string) []string { return []string{"1", "2 & 3"} })
+		// nor adding a guide's elements to another
+		var merged bytes.Buffer
+		err := Merge(&merged, strings.NewReader(doc), func(c string) []string { return []string{c} }, func(w io.Writer) error {
+			return Elements(w, strings.NewReader(doc), func(string) []string { return nil })
+		})
+		if err == nil && merged.String() != doc {
+			t.Fatalf("adding no element changed the guide:\n%q\n%q", doc, merged.String())
+		}
 		var none bytes.Buffer
 		if err := Filter(&none, strings.NewReader(doc), func(string) bool { return false }); err == nil && none.Len() > len(doc) {
 			t.Fatalf("leaving channels out made the guide larger:\n%q\n%q", doc, none.String())
 		}
 	})
+}
+
+func TestElements(t *testing.T) {
+	var out bytes.Buffer
+	err := Elements(&out, strings.NewReader(guide), func(channel string) []string {
+		if channel == "two.fr" {
+			return []string{"two.fr"}
+		}
+		return nil
+	})
+	want := `<channel id='two.fr'><display-name>Two</display-name></channel>
+<programme channel="two.fr" start="20251002200000 +0200"
+      stop="20251002210000 +0200"><title>Two's show</title></programme  >
+`
+	if err != nil || out.String() != want {
+		t.Errorf("err %v, got:\n%s\nwant:\n%s", err, out.String(), want)
+	}
+}
+
+func TestMerge(t *testing.T) {
+	other := `<?xml version="1.0"?><tv><!-- another provider -->
+<channel id="three.fr"><display-name>Three</display-name></channel>
+<programme channel="three.fr" start="20251002200000 +0200"><title>Three's show</title></programme>
+<programme channel="one.fr" start="20251002200000 +0200"><title>Also on one</title></programme>
+</tv>`
+	var out bytes.Buffer
+	err := Merge(&out, iotest.OneByteReader(strings.NewReader(guide)), func(channel string) []string { return []string{channel} }, func(w io.Writer) error {
+		return Elements(w, strings.NewReader(other), func(channel string) []string {
+			if channel == "three.fr" {
+				return []string{channel}
+			}
+			return nil // already in the first guide
+		})
+	})
+	want := strings.Replace(guide, "</tv>", `<channel id="three.fr"><display-name>Three</display-name></channel>
+<programme channel="three.fr" start="20251002200000 +0200"><title>Three's show</title></programme>
+</tv>`, 1)
+	if err != nil || out.String() != want {
+		t.Errorf("err %v, got:\n%s\nwant:\n%s", err, out.String(), want)
+	}
+
+	// what fails while the other guides are added fails the whole
+	broken := errors.New("broken")
+	if err := Merge(io.Discard, strings.NewReader(guide), func(channel string) []string { return nil }, func(io.Writer) error { return broken }); !errors.Is(err, broken) {
+		t.Errorf("err = %v", err)
+	}
 }

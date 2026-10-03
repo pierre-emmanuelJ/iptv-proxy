@@ -64,6 +64,8 @@ type provider struct {
 	late atomic.Bool
 	// revoked makes the provider refuse its second account.
 	revoked atomic.Bool
+	// liveDown makes live channel 1 of the first account fail.
+	liveDown atomic.Bool
 }
 
 func (p *provider) hit(r *http.Request) {
@@ -236,10 +238,10 @@ func newProvider(t *testing.T) *provider {
 				`{"num":"2","name":"Two","stream_id":"2","stream_icon":"","epg_channel_id":null,"category_id":"20"},`+
 				`{"num":3,"name":"Lost","stream_id":3,"category_id":"99"}`)
 			if p.late.Load() {
-				fmt.Fprint(w, `,{"num":4,"name":"Late","stream_id":4,"category_id":"10"}`)
+				fmt.Fprint(w, `,{"num":4,"name":"Late","stream_id":4,"category_id":"10","epg_channel_id":"one.fr"}`)
 			}
 			if r.URL.Query().Get("username") == x2User {
-				fmt.Fprint(w, `,{"num":5,"name":"Local news","stream_id":5,"category_id":"11"}`)
+				fmt.Fprint(w, `,{"num":5,"name":"Local news","stream_id":5,"category_id":"11","category_ids":[11,20]}`)
 			}
 			fmt.Fprint(w, `]`)
 		case "get_vod_categories":
@@ -324,11 +326,22 @@ func newProvider(t *testing.T) *provider {
 			return
 		}
 		w.Header().Set("Content-Type", "text/xml")
+		if r.URL.Query().Get("username") == x2User {
+			// the second account's package has a channel of its own
+			fmt.Fprint(w, strings.Replace(providerGuide, "</tv>", `  <channel id="local.fr"><display-name>Local</display-name></channel>
+  <programme start="20251002200000 +0200" channel="local.fr"><title>Local news</title></programme>
+</tv>`, 1))
+			return
+		}
 		fmt.Fprint(w, providerGuide)
 	})
 
 	mux.HandleFunc("/live/xuser/xpass/1.ts", func(w http.ResponseWriter, r *http.Request) {
 		p.hit(r)
+		if p.liveDown.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		w.Header().Set("Keep-Alive", "timeout=5")
 		w.Header().Set("X-Got-Range", r.Header.Get("Range"))
 		w.Header().Set("X-Got-Connection", r.Header.Get("Connection"))
@@ -404,6 +417,20 @@ func newProvider(t *testing.T) *provider {
 	mux.HandleFunc("/live/second/pw+2/5.ts", func(w http.ResponseWriter, r *http.Request) {
 		p.hit(r)
 		fmt.Fprint(w, "second-five")
+	})
+	// the second account's other streams: files, and an error page that
+	// repeats the address asked
+	for _, prefix := range []string{"/movie/second/pw+2/", "/series/second/pw+2/", "/timeshift/second/pw+2/"} {
+		mux.HandleFunc(prefix, func(w http.ResponseWriter, r *http.Request) {
+			p.hit(r)
+			fmt.Fprint(w, "second:"+strings.TrimPrefix(r.URL.Path, prefix))
+		})
+	}
+	mux.HandleFunc("/live/second/pw+2/", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintf(w, "<html>No such stream: %s</html>", r.URL.Path)
 	})
 	for _, path := range []string{"/live/xuser/xpass/8.ts", "/live/second/pw+2/8.ts", "/movie/xuser/xpass/endless.mkv", "/stream/endless", "/stream/endless.mp4"} {
 		mux.HandleFunc(path, p.endless)

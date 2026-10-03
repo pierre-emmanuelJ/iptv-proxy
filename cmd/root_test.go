@@ -329,3 +329,25 @@ func TestNoUsersWithoutAFile(t *testing.T) {
 		t.Errorf("users %+v, max %d, err %v", conf.Users, conf.MaxConnections, err)
 	}
 }
+
+func TestSourcesFromTheConfigurationFile(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	sources := "sources:\n  - name: backup\n    xtream-base-url: http://b.example\n    xtream-user: u\n    xtream-password: p\n    max-connections: 1\n  - xtream-base-url: http://c.example\n    xtream-user: v\n    xtream-password: q\n"
+	if err := os.WriteFile(file, []byte(sources), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	load(t, map[string]string{"IPTV_PROXY_CONFIG": file})
+	t.Cleanup(func() { cfgFile = "" })
+
+	conf, err := proxyConfig(rootCmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []config.Source{
+		{Name: "backup", XtreamBaseURL: "http://b.example", XtreamUser: "u", XtreamPassword: "p", MaxConnections: 1},
+		{XtreamBaseURL: "http://c.example", XtreamUser: "v", XtreamPassword: "q"},
+	}
+	if len(conf.Sources) != len(want) || conf.Sources[0] != want[0] || conf.Sources[1] != want[1] {
+		t.Errorf("sources: %+v", conf.Sources)
+	}
+}
