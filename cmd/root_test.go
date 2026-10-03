@@ -19,7 +19,7 @@ func load(t *testing.T, env map[string]string) {
 		t.Setenv("HOME", t.TempDir())
 	}
 	t.Chdir(t.TempDir())
-	for _, name := range []string{"USER", "PASSWORD", "HOSTNAME", "PROXY_USER", "PROXY_PASSWORD", "PROXY_HOSTNAME", "PORT", "M3U_URL", "XTREAM_USER", "XTREAM_PASSWORD", "XTREAM_BASE_URL", "ADVERTISED_PORT", "HTTPS", "USER_AGENT", "XTREAM_API_GET", "XTREAM_API_GET_MOVIES", "NO_STREAM_SHARING", "GROUP_REGEX", "CHANNEL_REGEX", "GROUP_EXCLUDE_REGEX", "CHANNEL_EXCLUDE_REGEX", "LISTEN_ADDRESS"} {
+	for _, name := range []string{"USER", "PASSWORD", "HOSTNAME", "PROXY_USER", "PROXY_PASSWORD", "PROXY_HOSTNAME", "PORT", "M3U_URL", "XTREAM_USER", "XTREAM_PASSWORD", "XTREAM_BASE_URL", "ADVERTISED_PORT", "HTTPS", "USER_AGENT", "XTREAM_API_GET", "XTREAM_API_GET_MOVIES", "NO_STREAM_SHARING", "GROUP_REGEX", "CHANNEL_REGEX", "GROUP_EXCLUDE_REGEX", "CHANNEL_EXCLUDE_REGEX", "LISTEN_ADDRESS", "XMLTV_URL"} {
 		t.Setenv(name, "")
 		os.Unsetenv(name) // nolint: errcheck
 	}
@@ -198,6 +198,7 @@ func TestProxyConfigFilters(t *testing.T) {
 		"GROUP_EXCLUDE_REGEX":   "(?i)adult",
 		"CHANNEL_EXCLUDE_REGEX": "Backup",
 		"LISTEN_ADDRESS":        "192.168.1.10",
+		"XMLTV_URL":             "http://guide.example/epg.xml.gz",
 	})
 	conf, err := proxyConfig(rootCmd)
 	if err != nil {
@@ -207,8 +208,8 @@ func TestProxyConfigFilters(t *testing.T) {
 	if conf.Filter != want {
 		t.Errorf("filters = %+v, want %+v", conf.Filter, want)
 	}
-	if conf.ListenAddress != "192.168.1.10" {
-		t.Errorf("listen address = %q", conf.ListenAddress)
+	if conf.ListenAddress != "192.168.1.10" || conf.XMLTVURL != "http://guide.example/epg.xml.gz" {
+		t.Errorf("listen address = %q, guide = %q", conf.ListenAddress, conf.XMLTVURL)
 	}
 
 	load(t, map[string]string{"CHANNEL_EXCLUDE_REGEX": "(unclosed"})

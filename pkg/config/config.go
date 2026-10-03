@@ -73,4 +73,7 @@ type ProxyConfig struct {
 	// ListenAddress is the address the proxy listens on; empty means every
 	// interface.
 	ListenAddress string
+	// XMLTVURL is the guide of an M3U playlist, when its header does not
+	// name one or names another.
+	XMLTVURL string
 }

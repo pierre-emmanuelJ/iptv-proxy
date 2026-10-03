@@ -20,7 +20,6 @@ package server
 
 import (
 	"fmt"
-	"net/url"
 
 	"github.com/gin-gonic/gin"
 )
@@ -82,15 +81,9 @@ func (c *Config) m3uRoutes(r *gin.RouterGroup) {
 	r.GET("/"+c.M3UFileName, c.authenticate, c.getM3U)
 	// XXX Private need: for external Android app
 	r.POST("/"+c.M3UFileName, c.authenticate, c.getM3U)
+	r.GET("/xmltv.php", c.authenticate, c.m3uXMLTV)
 
-	for i, track := range c.playlist.Tracks {
-		trackURL, err := url.Parse(track.URI)
-		if err != nil {
-			continue // proxify() only keeps tracks with a valid address
-		}
-
-		// The last element is the track's file name, there for players that
-		// look at the extension.
-		r.GET(fmt.Sprintf("/%s/%s/%s/%d/:id", c.endpointAntiColision, c.User, c.Password, i), c.reverseProxy(trackURL))
-	}
+	// The last element is the track's file name, there for players that
+	// look at the extension.
+	r.GET(fmt.Sprintf("/%s/%s/%s/:track/:name", c.endpointAntiColision, c.User, c.Password), c.m3uTrack)
 }

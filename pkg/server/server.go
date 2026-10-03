@@ -21,7 +21,7 @@ package server
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -73,10 +73,8 @@ var streamRetries = []time.Duration{0, 500 * time.Millisecond, time.Second, 2 * 
 type Config struct {
 	*config.ProxyConfig
 
-	// M3U service part: the provider's playlist (tracks the proxy can
-	// serve), and the same playlist pointing at the proxy.
-	playlist     *m3u.Playlist
-	proxyfiedM3U []byte
+	// m3u is the provider's M3U playlist, in M3U mode.
+	m3u m3uPlaylist
 
 	endpointAntiColision string
 
@@ -98,6 +96,9 @@ type Config struct {
 	// rules keep the channels clients see; nil keeps them all.
 	rules  *filter.Rules
 	groups liveGroups
+
+	// lastGood answers for a provider that fails.
+	lastGood *lastGood
 }
 
 type cachedM3U struct {
@@ -123,11 +124,11 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 
 	c := &Config{
 		ProxyConfig:          config,
-		playlist:             &m3u.Playlist{},
 		endpointAntiColision: strings.Trim(config.CustomId, "/"),
 		client:               &http.Client{Transport: transport},
 		apiClient:            &http.Client{Transport: newTransport(apiHeaderTimeout)},
 		m3uCache:             map[string]cachedM3U{},
+		lastGood:             newLastGood(),
 	}
 	remote := ""
 	if config.RemoteURL != nil {
@@ -152,23 +153,18 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 	}
 
 	if c.endpointAntiColision == "" {
-		id := make([]byte, 4)
-		if _, err := rand.Read(id); err != nil {
-			return nil, err
-		}
-		c.endpointAntiColision = hex.EncodeToString(id)
+		// The same settings give the same track addresses, restart after
+		// restart.
+		sum := sha256.Sum256([]byte("iptv-proxy track prefix\x00" + config.User.String() + "\x00" + config.Password.String() + "\x00" + remote))
+		c.endpointAntiColision = hex.EncodeToString(sum[:4])
 	}
 
 	// With an Xtream provider the playlist is asked for when a client wants
 	// it: nothing to download before starting.
-	if c.RemoteURL != nil && c.RemoteURL.String() != "" && !c.xtreamServesPlaylist() {
-		ctx, cancel := context.WithTimeout(context.Background(), playlistFetchTimeout)
-		defer cancel()
-		playlist, err := c.loadPlaylist(ctx, c.RemoteURL.String(), c.upstreamUserAgent(""))
-		if err != nil {
+	if c.servesM3U() {
+		if err := c.loadM3U(context.Background()); err != nil {
 			return nil, err
 		}
-		c.playlist, c.proxyfiedM3U = c.proxify(playlist, false)
 	}
 
 	return c, nil
@@ -239,6 +235,12 @@ func (c *Config) listenAddress() string {
 	return net.JoinHostPort(c.ListenAddress, strconv.Itoa(c.HostConfig.Port))
 }
 
+// servesM3U tells whether the proxy serves an M3U playlist of its own (M3U
+// mode).
+func (c *Config) servesM3U() bool {
+	return c.RemoteURL != nil && c.RemoteURL.String() != "" && !c.xtreamServesPlaylist()
+}
+
 // xtreamServesPlaylist tells whether the playlist address given to the proxy
 // is the get.php of its Xtream provider: the playlist is then one more Xtream
 // endpoint.
@@ -300,12 +302,15 @@ func (c *Config) loadPlaylist(ctx context.Context, source, userAgent string) (*m
 func (c *Config) proxify(playlist *m3u.Playlist, fromXtream bool) (*m3u.Playlist, []byte) {
 	kept := &m3u.Playlist{Header: playlist.Header, Tracks: make([]m3u.Track, 0, len(playlist.Tracks))}
 	out := &m3u.Playlist{Header: c.hideProvider(playlist.Header, fromXtream), Tracks: make([]m3u.Track, 0, len(playlist.Tracks))}
+	if !fromXtream {
+		out.Header = c.m3uHeader(playlist.Header, out.Header)
+	}
 
 	for _, track := range playlist.Tracks {
-		if !c.keepTrack(track) {
+		if c.rules.Active() && !c.keepTrack(track) {
 			continue
 		}
-		uri, err := c.replaceURL(track.URI, len(kept.Tracks), fromXtream)
+		uri, err := c.replaceURL(track.URI, fromXtream)
 		if err != nil {
 			log.Printf("[iptv-proxy] ERROR: track %q dropped: invalid address", track.Name())
 			continue
@@ -344,8 +349,10 @@ func (c *Config) proxyAccount() xtream.Account {
 	return xtream.Account{BaseURL: c.proxyBaseURL(), User: c.User.String(), Password: c.Password.String()}
 }
 
-// ReplaceURL replace original playlist url by proxy url
-func (c *Config) replaceURL(uri string, trackIndex int, xtream bool) (string, error) {
+// replaceURL returns the proxy's address of a track: the same path with the
+// proxy's credentials for an Xtream stream, else
+// "<custom-id>/<user>/<password>/<track key>/<file name>".
+func (c *Config) replaceURL(uri string, xtream bool) (string, error) {
 	oriURL, err := url.Parse(uri)
 	if err != nil {
 		return "", err
@@ -360,7 +367,7 @@ func (c *Config) replaceURL(uri string, trackIndex int, xtream bool) (string, er
 			1,
 		)
 	} else {
-		uriPath = path.Join("/", c.endpointAntiColision, c.User.PathEscape(), c.Password.PathEscape(), fmt.Sprintf("%d", trackIndex), path.Base(uriPath))
+		uriPath = path.Join("/", c.endpointAntiColision, c.User.PathEscape(), c.Password.PathEscape(), trackKey(uri), path.Base(uriPath))
 	}
 
 	base, err := url.Parse(c.proxyBaseURL())

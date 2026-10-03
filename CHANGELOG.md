@@ -1,5 +1,40 @@
 # Changelog
 
+## 3.13.0
+
+### Added
+
+- **The provider's last good answers stand in when it fails.** The login,
+  the lists of the Xtream API, the playlists and the guide are kept,
+  compressed in memory, as the provider last sent them in full. When it
+  answers an error, a "not found", a page that is not what was asked, or
+  nothing, players get that answer instead, and the log says so. Refusals
+  (401, 403) are passed on.
+- **M3U playlists are read again** when a player asks for one older than
+  `--m3u-cache-expiration` (one hour by default), with no restart. A
+  playlist that cannot be read is kept, and asked again five minutes later.
+  (#131, #85)
+- **A guide for M3U playlists**: the guide the playlist names (`url-tvg`,
+  `x-tvg-url`), or `--xmltv-url` (`XMLTV_URL`, an address or a local file),
+  is served at `/xmltv.php`, and the playlist names that address. The
+  filters apply to it. (#84)
+
+### Changed
+
+- An M3U track's address on the proxy is derived from its address at the
+  provider instead of its position: it stays the same when the playlist
+  changes. Without `--custom-id`, the first element of track addresses is
+  derived from your settings instead of drawn at random: addresses survive a
+  restart. Players load the playlist again once, then keep working.
+- A large M3U playlist takes far less memory and starts faster: with a
+  playlist of 910,000 tracks (259 MB), 440 MB once loaded instead of 1.4 GB,
+  and 5.5 s to start instead of 9.5 s.
+
+### Fixed
+
+- Playlist attribute names are read regardless of case, as players do:
+  some providers write `tvg-ID` or `Group-Title`, which the filters missed.
+
 ## 3.12.0
 
 ### Added

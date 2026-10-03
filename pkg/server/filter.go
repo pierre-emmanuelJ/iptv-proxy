@@ -19,10 +19,6 @@
 package server
 
 import (
-	"bufio"
-	"bytes"
-	"compress/gzip"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -30,7 +26,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/m3u"
-	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/xmltv"
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/xtream"
 )
 
@@ -132,39 +127,6 @@ func (c *Config) guideChannels(ctx *gin.Context) (map[string]bool, error) {
 		}
 	}
 	return kept, nil
-}
-
-// passOnGuide sends the provider's guide with only the channels kept.
-func (c *Config) passOnGuide(ctx *gin.Context, resp *http.Response, kept map[string]bool) {
-	c.dropLeakingHeaders(resp.Header)
-	if resp.StatusCode >= http.StatusBadRequest {
-		c.passOn(ctx, resp)
-		return
-	}
-
-	// The guide is filtered as it streams: it is sent uncompressed, with a
-	// length nobody knows yet.
-	body := bufio.NewReader(resp.Body)
-	if start, _ := body.Peek(2); bytes.Equal(start, []byte{0x1f, 0x8b}) {
-		unzipped, err := gzip.NewReader(body)
-		if err != nil {
-			c.upstreamError(ctx, err)
-			return
-		}
-		defer unzipped.Close() // nolint: errcheck
-		body = bufio.NewReader(unzipped)
-		resp.Header.Set("Content-Type", "application/xml")
-	}
-	for _, name := range []string{"Content-Length", "Content-Encoding", "Content-Range", "Accept-Ranges", "Etag", "Content-Md5"} {
-		resp.Header.Del(name)
-	}
-
-	mergeHttpHeader(ctx.Writer.Header(), resp.Header)
-	ctx.Status(resp.StatusCode)
-	ctx.Writer.WriteHeaderNow()
-	// The copy ends when the provider or the client stops: there is no one
-	// left to tell.
-	_ = xmltv.Filter(flushWriter{ctx.Writer}, body, func(channel string) bool { return kept[channel] })
 }
 
 // keepTrack tells whether a playlist track is kept.

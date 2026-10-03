@@ -122,6 +122,7 @@ func proxyConfig(cmd *cobra.Command) (*config.ProxyConfig, error) {
 			ChannelExclude: viper.GetString("channel-exclude-regex"),
 		},
 		ListenAddress: viper.GetString("listen-address"),
+		XMLTVURL:      viper.GetString("xmltv-url"),
 	}
 	// An invalid expression is reported before anything starts.
 	if _, err := filter.New(conf.Filter); err != nil {
@@ -198,7 +199,8 @@ func init() {
 	rootCmd.Flags().String("xtream-user", "", "Xtream-code user login")
 	rootCmd.Flags().String("xtream-password", "", "Xtream-code password login")
 	rootCmd.Flags().String("xtream-base-url", "", "Xtream-code base url e.g(http://expample.tv:8080)")
-	rootCmd.Flags().Int("m3u-cache-expiration", 1, "M3U cache expiration in hour")
+	rootCmd.Flags().Int("m3u-cache-expiration", 1, "Hours a playlist is kept before reading it again from the provider")
+	rootCmd.Flags().String("xmltv-url", "", "Guide (XMLTV) of the M3U playlist, an http(s) address or a local file, served at /xmltv.php (default: the guide the playlist names)")
 	rootCmd.Flags().BoolP("xtream-api-get", "", false, "Generate get.php from xtream API instead of get.php original endpoint")
 	rootCmd.Flags().Bool("xtream-api-get-movies", false, "Add the provider's movies to the playlist generated from the xtream API (large catalogues make a playlist some players cannot load)")
 	rootCmd.Flags().String("user-agent", "", "User-Agent sent to the provider instead of the client's (some providers only answer known players)")
