@@ -1,5 +1,18 @@
 # Changelog
 
+## 4.1.0
+
+### Added
+
+- **Each player with its own provider account** (`--xtream-passthrough`,
+  `XTREAM_PASSTHROUGH`). The proxy is given only the provider's address;
+  players log in with their own account of the provider, which the proxy
+  checks with the provider (again every 10 minutes, and an account it
+  accepted keeps playing while the provider fails). Each account is held to
+  the streams the provider allows it, with the same-device rule of 4.0, or to
+  `--max-connections`. Playlists, API answers, the guide and error pages name
+  the proxy and leave out the provider's address; the access log masks the
+  accounts. (#72)
 ## 4.0.0
 
 ### Added

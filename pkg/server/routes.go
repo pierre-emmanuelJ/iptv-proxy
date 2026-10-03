@@ -73,6 +73,15 @@ func (c *Config) xtreamRoutes(r *gin.RouterGroup) {
 	r.GET("/xmltv.php", c.authenticate, c.xtreamXMLTV)
 	r.GET("/play/:token/:type", c.xtreamStreamPlay)
 
+	if c.XtreamPassthrough {
+		// Streams name the provider account they are watched with.
+		r.GET("/:username/:password/:id", c.passthroughStream, c.limit, c.xtreamStreamHandler)
+		r.GET("/live/:username/:password/:id", c.passthroughStream, c.limit, c.xtreamStreamLive)
+		r.GET("/timeshift/:username/:password/:duration/:start/:id", c.passthroughStream, c.limit, c.xtreamStreamTimeshift)
+		r.GET("/movie/:username/:password/:id", c.passthroughStream, c.limit, c.xtreamStreamMovie)
+		r.GET("/series/:username/:password/:id", c.passthroughStream, c.limit, c.xtreamStreamSeries)
+		return
+	}
 	// Streams name their user in their path: each user has their own.
 	for _, u := range c.users {
 		r.GET(fmt.Sprintf("/%s/%s/:id", u.name, u.password), as(u), c.limit, c.xtreamStreamHandler)

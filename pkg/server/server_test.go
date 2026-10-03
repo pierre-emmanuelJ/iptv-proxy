@@ -34,6 +34,8 @@ func TestMain(m *testing.M) {
 const (
 	xUser, xPass = "xuser", "xpass"
 	user, pass   = "me", "secret"
+	// a second account of the provider, allowed one stream at once
+	x2User, x2Pass = "second", "pw+2"
 )
 
 // provider is a fake Xtream provider, with the quirks real ones have.
@@ -60,6 +62,8 @@ type provider struct {
 	// late adds a news channel to the live streams, as a provider does now
 	// and then.
 	late atomic.Bool
+	// revoked makes the provider refuse its second account.
+	revoked atomic.Bool
 }
 
 func (p *provider) hit(r *http.Request) {
@@ -187,11 +191,22 @@ func newProvider(t *testing.T) *provider {
 			fmt.Fprint(w, "<html>Down for maintenance</html>")
 			return false
 		}
-		if r.URL.Query().Get("username") != xUser || r.URL.Query().Get("password") != xPass {
-			fmt.Fprint(w, `{"user_info":{"auth":0}}`)
+		switch q := r.URL.Query(); {
+		case q.Get("username") == xUser && q.Get("password") == xPass:
+			return true
+		case q.Get("username") == x2User && q.Get("password") == x2Pass && !p.revoked.Load():
+			return true
+		case q.Get("username") == "empty":
+			// others with an empty list
+			fmt.Fprint(w, `[]`)
+			return false
+		case q.Get("username") == "locked":
+			// some providers refuse with a status
+			w.WriteHeader(http.StatusUnauthorized)
 			return false
 		}
-		return true
+		fmt.Fprint(w, `{"user_info":{"auth":0}}`)
+		return false
 	}
 
 	mux.HandleFunc("/player_api.php", func(w http.ResponseWriter, r *http.Request) {
@@ -202,16 +217,29 @@ func newProvider(t *testing.T) *provider {
 		base := strings.ReplaceAll(p.URL, "/", `\/`)
 		switch r.URL.Query().Get("action") {
 		case "":
-			fmt.Fprint(w, `{"user_info":{"username":"xuser","password":"xpass","message":"","auth":1,"status":"Active","exp_date":null,"is_trial":"0","active_cons":0,"created_at":"1700000000","max_connections":"2","allowed_output_formats":["m3u8","ts","rtmp"]},"server_info":{"url":"provider.example","port":"80","https_port":"443","server_protocol":"http","rtmp_port":"8880","timezone":"Europe\/Paris","timestamp_now":1759400000,"time_now":"2025-10-02 12:00:00","process":true}}`)
+			connections := "2"
+			if r.URL.Query().Get("username") == x2User {
+				connections = "1"
+			}
+			fmt.Fprintf(w, `{"user_info":{"username":%q,"password":%q,"message":"","auth":1,"status":"Active","exp_date":null,"is_trial":"0","active_cons":0,"created_at":"1700000000","max_connections":%q,"allowed_output_formats":["m3u8","ts","rtmp"]},"server_info":{"url":"provider.example","port":"80","https_port":"443","server_protocol":"http","rtmp_port":"8880","timezone":"Europe\/Paris","timestamp_now":1759400000,"time_now":"2025-10-02 12:00:00","process":true}}`,
+				r.URL.Query().Get("username"), r.URL.Query().Get("password"), connections)
 		case "get_live_categories":
 			// ids as strings here, as numbers in the streams
-			fmt.Fprint(w, `[{"category_id":"10","category_name":"News","parent_id":0},{"category_id":"20","category_name":"Sport \"HD\"","parent_id":0}]`)
+			fmt.Fprint(w, `[{"category_id":"10","category_name":"News","parent_id":0},{"category_id":"20","category_name":"Sport \"HD\"","parent_id":0}`)
+			if r.URL.Query().Get("username") == x2User {
+				// the second account has a package of its own
+				fmt.Fprint(w, `,{"category_id":"11","category_name":"News"}`)
+			}
+			fmt.Fprint(w, `]`)
 		case "get_live_streams":
 			fmt.Fprint(w, `[{"num":1,"name":"One","stream_type":"live","stream_id":1,"stream_icon":"http:\/\/logos.example\/one.png","epg_channel_id":"one.fr","added":"1700000000","category_id":10,"tv_archive":0,"direct_source":""},`+
 				`{"num":"2","name":"Two","stream_id":"2","stream_icon":"","epg_channel_id":null,"category_id":"20"},`+
 				`{"num":3,"name":"Lost","stream_id":3,"category_id":"99"}`)
 			if p.late.Load() {
 				fmt.Fprint(w, `,{"num":4,"name":"Late","stream_id":4,"category_id":"10"}`)
+			}
+			if r.URL.Query().Get("username") == x2User {
+				fmt.Fprint(w, `,{"num":5,"name":"Local news","stream_id":5,"category_id":"11"}`)
 			}
 			fmt.Fprint(w, `]`)
 		case "get_vod_categories":
@@ -238,6 +266,11 @@ func newProvider(t *testing.T) *provider {
 			w.Header().Set("Link", "<"+r.URL.RequestURI()+">; rel=self")
 			w.WriteHeader(http.StatusNotFound)
 			fmt.Fprintf(w, "<html>404: %s<br>%s</html>", r.URL.RequestURI(), html.EscapeString(r.URL.RequestURI()))
+		case "where":
+			// an error page naming the provider's own address
+			w.Header().Set("Link", "<"+p.URL+"/help>; rel=help")
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, "<html>See %s/help</html>", p.URL)
 		case "broken":
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprint(w, `<html>Fatal error</html>`)
@@ -248,6 +281,11 @@ func newProvider(t *testing.T) *provider {
 
 	mux.HandleFunc("/get.php", func(w http.ResponseWriter, r *http.Request) {
 		if !authorized(w, r) {
+			return
+		}
+		if r.URL.Query().Get("type") == "hosted" {
+			// an attribute naming the provider, without credentials
+			fmt.Fprintf(w, "#EXTM3U\n#EXTINF:-1 tvg-logo=\"%[1]s/logos/one.png\" group-title=\"News\",One\n%[1]s/live/%[2]s/%[3]s/1.ts\n", p.URL, r.URL.Query().Get("username"), r.URL.Query().Get("password"))
 			return
 		}
 		if r.URL.Query().Get("type") == "forbidden" {
@@ -359,7 +397,15 @@ func newProvider(t *testing.T) *provider {
 		p.hit(r)
 		http.Redirect(w, r, p.cdn.URL+"/session/abc/index", http.StatusFound)
 	})
-	for _, path := range []string{"/live/xuser/xpass/8.ts", "/movie/xuser/xpass/endless.mkv", "/stream/endless", "/stream/endless.mp4"} {
+	mux.HandleFunc("/live/second/pw+2/1.ts", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		fmt.Fprint(w, "second-one")
+	})
+	mux.HandleFunc("/live/second/pw+2/5.ts", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		fmt.Fprint(w, "second-five")
+	})
+	for _, path := range []string{"/live/xuser/xpass/8.ts", "/live/second/pw+2/8.ts", "/movie/xuser/xpass/endless.mkv", "/stream/endless", "/stream/endless.mp4"} {
 		mux.HandleFunc(path, p.endless)
 	}
 	// A file being read: endless for the test's purpose, but with a length.

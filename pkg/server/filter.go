@@ -37,22 +37,28 @@ import (
 // filtered. Without filters, the provider's answers are passed on as they
 // are.
 
-// liveGroups are the names of the provider's live categories, by id. The
-// stream list only gives a category's id, and the filters are on its name.
+// liveGroups are the names of the provider's live categories, by id, for
+// each provider account. The stream list only gives a category's id, and the
+// filters are on its name.
 type liveGroups struct {
-	mu    sync.Mutex
+	mu       sync.Mutex
+	accounts map[string]groupNames
+}
+
+type groupNames struct {
 	names map[string]string
 	at    time.Time
 }
 
-// liveGroupNames returns the provider's live categories, asked again once
-// they are older than the playlist cache.
+// liveGroupNames returns the live categories of the request's provider
+// account, asked again once they are older than the playlist cache.
 func (c *Config) liveGroupNames(ctx *gin.Context) (map[string]string, error) {
 	c.groups.mu.Lock()
 	defer c.groups.mu.Unlock()
 
-	if c.groups.names != nil && time.Since(c.groups.at) < time.Duration(c.M3UCacheExpiration)*time.Hour {
-		return c.groups.names, nil
+	account := c.accountOf(ctx).User
+	if known := c.groups.accounts[account]; known.names != nil && time.Since(known.at) < time.Duration(c.M3UCacheExpiration)*time.Hour {
+		return known.names, nil
 	}
 	categories, err := c.providerList(ctx, "get_live_categories")
 	if err != nil {
@@ -62,7 +68,10 @@ func (c *Config) liveGroupNames(ctx *gin.Context) (map[string]string, error) {
 	for _, category := range categories {
 		names[xtream.Text(category["category_id"])] = xtream.Text(category["category_name"])
 	}
-	c.groups.names, c.groups.at = names, time.Now()
+	if c.groups.accounts == nil {
+		c.groups.accounts = map[string]groupNames{}
+	}
+	c.groups.accounts[account] = groupNames{names: names, at: time.Now()}
 	return names, nil
 }
 
@@ -139,10 +148,10 @@ func keepTrack(track m3u.Track, rules *filter.Rules) bool {
 }
 
 // providerSecret is the account whose password must not reach a client: the
-// Xtream account, else the one in the playlist's address.
+// Xtream account (see hiddenAccount), else the one in the playlist's address.
 func (c *Config) providerSecret() xtream.Account {
-	if c.XtreamPassword != "" {
-		return c.providerAccount()
+	if c.XtreamPassword != "" || c.XtreamPassthrough {
+		return c.hiddenAccount()
 	}
 	if c.RemoteURL != nil {
 		q := c.RemoteURL.Query()
@@ -159,7 +168,7 @@ func (c *Config) providerSecret() xtream.Account {
 // the attribute, or the whole directive. It returns "" for a line to drop.
 func (c *Config) hideProvider(line string, fromXtream bool, u *proxyUser) string {
 	if fromXtream {
-		line = string(xtream.Sanitize([]byte(line), c.providerAccount(), c.proxyAccount(u)))
+		line = string(xtream.Sanitize([]byte(line), u.provider, c.proxyAccount(u)))
 	}
 	secret := c.providerSecret()
 	if !xtream.Leaks(line, secret) {
@@ -208,6 +217,9 @@ func (c *Config) mayWatch(ctx *gin.Context, u *proxyUser, id string) (bool, erro
 	}
 	id = strings.TrimSuffix(id, path.Ext(id))
 	key := u.rules.String()
+	if c.XtreamPassthrough {
+		key = u.name.String() + "\x00" + key // accounts may have different channels
+	}
 
 	c.liveAccess.mu.Lock()
 	defer c.liveAccess.mu.Unlock()

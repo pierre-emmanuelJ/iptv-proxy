@@ -169,6 +169,7 @@ wins over the variable, and the variable over the file.
 | `--xtream-base-url` | `XTREAM_BASE_URL` | | Provider's Xtream Codes address, e.g. `http://provider.example:8080`. |
 | `--xtream-user` | `XTREAM_USER` | | Provider's Xtream Codes user. |
 | `--xtream-password` | `XTREAM_PASSWORD` | | Provider's Xtream Codes password. |
+| `--xtream-passthrough` | `XTREAM_PASSTHROUGH` | `false` | Players log in with their own account of the provider. See [Each player with its own provider account](#each-player-with-its-own-provider-account). |
 | `--hostname` | `PROXY_HOSTNAME` (or `HOSTNAME`) | | Name or IP your players reach the proxy at. It is written in every address the proxy gives out. |
 | `--port` | `PORT` | `8080` | Port the proxy listens on. |
 | `--listen-address` | `LISTEN_ADDRESS` | every interface | IP address the proxy listens on, e.g. `127.0.0.1` behind a reverse proxy on the same machine. |
@@ -370,6 +371,39 @@ docker run -d --name iptv-proxy -p 8080:8080 \
 - `--max-connections` (`MAX_CONNECTIONS`) sets the limit of the one user of
   `--user` and `--password`, without a file.
 
+## Each player with its own provider account
+
+When everyone in the house has their own account with the same provider,
+the proxy does not need one: with `--xtream-passthrough`, players log in to
+the proxy with their provider account, and the proxy only gives the
+provider's address.
+
+```sh
+docker run -d --name iptv-proxy -p 8080:8080 \
+  -e XTREAM_BASE_URL="http://provider.example:8080" \
+  -e XTREAM_PASSTHROUGH=true \
+  -e PROXY_HOSTNAME=192.168.1.10 \
+  pierro777/iptv-proxy:latest
+```
+
+- Players are set up with the proxy's address and **their own provider user
+  and password**. Their playlists, guide and stream addresses name the proxy
+  and hold their own account; the provider's address is left out.
+- The proxy asks the provider whether it accepts an account at the first
+  request, then again every 10 minutes. An account refused by the provider
+  gets a 401. An account it accepted keeps playing while the provider cannot
+  answer, with the [last good answers](#when-the-provider-fails).
+- **Each account is held to the streams the provider allows it**
+  (`max_connections` of its login answer), with the same rule as
+  [several users](#several-users): zapping on the same device works, another
+  device waits. `--max-connections` sets another limit for every account.
+- The proxy's filters apply to every account. Live streams are shared
+  between the players of the same account only.
+- There are no proxy users: `--xtream-user`, `--xtream-password`, `users` in
+  the configuration file, `--m3u-url` and the HDHomeRun tuner do not go with
+  it, and the proxy says so at startup. `--user` and `--password` are not
+  used.
+
 ## Plex and other media servers
 
 With `--hdhomerun-port`, the proxy also answers as an HDHomeRun network tuner
@@ -527,9 +561,8 @@ docker compose up -d
 
 Planned, not available yet:
 
-- Clients logging in with their own provider credentials, the proxy only
-  hiding the provider's address.
 - Several providers behind one proxy, with failover.
+- Optional ffmpeg profiles, and a read-only status page.
 
 See the [changelog](CHANGELOG.md) for what each release brought.
 

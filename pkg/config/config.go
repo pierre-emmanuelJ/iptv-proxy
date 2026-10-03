@@ -100,4 +100,7 @@ type ProxyConfig struct {
 	// MaxConnections is the limit of streams at once of the one user of User
 	// and Password; 0 is no limit.
 	MaxConnections int
+	// XtreamPassthrough lets each client log in with its own account of the
+	// Xtream provider, instead of the proxy's users and account.
+	XtreamPassthrough bool
 }

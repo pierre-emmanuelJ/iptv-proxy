@@ -236,7 +236,10 @@ func (c *Config) errorPage(ctx *gin.Context, status int, header http.Header, pag
 	if u, ok := ctx.Get(userKey); ok {
 		replacement = c.proxyAccount(u.(*proxyUser))
 	}
-	page = xtream.Scrub(page, c.providerAccount(), replacement)
+	if c.XtreamPassthrough {
+		replacement = xtream.Account{Password: c.HostConfig.Hostname} // the provider's host becomes the proxy's
+	}
+	page = xtream.Scrub(page, c.hiddenAccount(), replacement)
 
 	header.Del("Content-Length") // the page changed
 	mergeHttpHeader(ctx.Writer.Header(), header)
@@ -248,7 +251,7 @@ func (c *Config) errorPage(ctx *gin.Context, status int, header http.Header, pag
 func (c *Config) dropLeakingHeaders(header http.Header) {
 	for name, values := range header {
 		for _, value := range values {
-			if xtream.Leaks(value, c.providerAccount()) {
+			if xtream.Leaks(value, c.hiddenAccount()) {
 				header.Del(name)
 				break
 			}
