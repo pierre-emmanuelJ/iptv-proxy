@@ -119,10 +119,10 @@ func (c *Config) loadM3U(ctx context.Context) error {
 		state.audiences[audience] = a
 	}
 	if c.HDHomeRunPort != 0 {
-		// the tuner has no user: the proxy's filters apply
+		// the tuner has no user: the proxy's filters and its own apply
 		var live []m3u.Track
 		for _, track := range playlist.Tracks {
-			if !c.rules.Active() || keepTrack(track, c.rules) {
+			if !c.tunerRules.Active() || keepTrack(track, c.tunerRules) {
 				live = append(live, track)
 			}
 		}

@@ -94,9 +94,11 @@ type Config struct {
 	m3uCacheLock sync.Mutex
 	m3uCache     map[string]cachedM3U
 
-	// rules keep the channels clients see; nil keeps them all.
-	rules  *filter.Rules
-	groups liveGroups
+	// rules keep the channels clients see; nil keeps them all. tunerRules
+	// keep the HDHomeRun tuner's.
+	rules      *filter.Rules
+	tunerRules *filter.Rules
+	groups     liveGroups
 
 	// lastGood answers for a provider that fails.
 	lastGood *lastGood
@@ -152,6 +154,11 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 	if c.rules, err = filter.New(config.Filter); err != nil {
 		return nil, err
 	}
+	tuner, err := filter.New(config.HDHomeRunFilter)
+	if err != nil {
+		return nil, fmt.Errorf("the HDHomeRun tuner's filters: %w", err)
+	}
+	c.tunerRules = filter.Combine(c.rules, tuner)
 	if err := c.setupUsers(); err != nil {
 		return nil, err
 	}

@@ -190,7 +190,7 @@ func (c *Config) tunerChannels(ctx *gin.Context) ([]tunerChannel, error) {
 // reorders its list, so recordings stay on their channel.
 func (c *Config) xtreamTunerChannels(ctx *gin.Context) ([]tunerChannel, error) {
 	var groups map[string]string
-	if c.rules.FiltersGroups() {
+	if c.tunerRules.FiltersGroups() {
 		var err error
 		if groups, err = c.liveGroupNames(ctx); err != nil {
 			return nil, err
@@ -204,7 +204,7 @@ func (c *Config) xtreamTunerChannels(ctx *gin.Context) ([]tunerChannel, error) {
 	seen := map[string]bool{}
 	for _, stream := range streams {
 		id := xtream.Text(stream["stream_id"])
-		if id == "" || seen[id] || !keepStream(stream, groups, c.rules) {
+		if id == "" || seen[id] || !keepStream(stream, groups, c.tunerRules) {
 			continue
 		}
 		seen[id] = true

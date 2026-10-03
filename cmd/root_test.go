@@ -20,7 +20,7 @@ func load(t *testing.T, env map[string]string) {
 		t.Setenv("HOME", t.TempDir())
 	}
 	t.Chdir(t.TempDir())
-	for _, name := range []string{"USER", "PASSWORD", "HOSTNAME", "PROXY_USER", "PROXY_PASSWORD", "PROXY_HOSTNAME", "PORT", "M3U_URL", "XTREAM_USER", "XTREAM_PASSWORD", "XTREAM_BASE_URL", "ADVERTISED_PORT", "HTTPS", "USER_AGENT", "XTREAM_API_GET", "XTREAM_API_GET_MOVIES", "NO_STREAM_SHARING", "GROUP_REGEX", "CHANNEL_REGEX", "GROUP_EXCLUDE_REGEX", "CHANNEL_EXCLUDE_REGEX", "LISTEN_ADDRESS", "XMLTV_URL", "MAX_CONNECTIONS", "IPTV_PROXY_CONFIG"} {
+	for _, name := range []string{"USER", "PASSWORD", "HOSTNAME", "PROXY_USER", "PROXY_PASSWORD", "PROXY_HOSTNAME", "PORT", "M3U_URL", "XTREAM_USER", "XTREAM_PASSWORD", "XTREAM_BASE_URL", "ADVERTISED_PORT", "HTTPS", "USER_AGENT", "XTREAM_API_GET", "XTREAM_API_GET_MOVIES", "NO_STREAM_SHARING", "GROUP_REGEX", "CHANNEL_REGEX", "GROUP_EXCLUDE_REGEX", "CHANNEL_EXCLUDE_REGEX", "LISTEN_ADDRESS", "XMLTV_URL", "MAX_CONNECTIONS", "IPTV_PROXY_CONFIG", "XTREAM_PASSTHROUGH", "HDHOMERUN_GROUP_REGEX", "HDHOMERUN_CHANNEL_REGEX", "HDHOMERUN_GROUP_EXCLUDE_REGEX", "HDHOMERUN_CHANNEL_EXCLUDE_REGEX"} {
 		t.Setenv(name, "")
 		os.Unsetenv(name) // nolint: errcheck
 	}
@@ -216,6 +216,27 @@ func TestProxyConfigFilters(t *testing.T) {
 	load(t, map[string]string{"CHANNEL_EXCLUDE_REGEX": "(unclosed"})
 	if _, err := proxyConfig(rootCmd); err == nil || !strings.Contains(err.Error(), "--channel-exclude-regex") {
 		t.Errorf("an invalid expression: err = %v", err)
+	}
+}
+
+func TestProxyConfigTunerFiltersAndPassthrough(t *testing.T) {
+	load(t, map[string]string{
+		"HDHOMERUN_GROUP_REGEX":           "^FRANCE ",
+		"HDHOMERUN_CHANNEL_REGEX":         "HD",
+		"HDHOMERUN_GROUP_EXCLUDE_REGEX":   "SPORTS",
+		"HDHOMERUN_CHANNEL_EXCLUDE_REGEX": "Backup",
+		"XTREAM_PASSTHROUGH":              "true",
+	})
+	conf, err := proxyConfig(rootCmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filter.Patterns{Group: "^FRANCE ", Channel: "HD", GroupExclude: "SPORTS", ChannelExclude: "Backup"}
+	if conf.HDHomeRunFilter != want || conf.Filter != (filter.Patterns{}) {
+		t.Errorf("tuner filters = %+v, proxy filters = %+v", conf.HDHomeRunFilter, conf.Filter)
+	}
+	if !conf.XtreamPassthrough {
+		t.Error("XTREAM_PASSTHROUGH is not read")
 	}
 }
 

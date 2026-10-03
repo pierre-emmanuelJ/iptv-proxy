@@ -121,11 +121,17 @@ func proxyConfig(cmd *cobra.Command) (*config.ProxyConfig, error) {
 			GroupExclude:   viper.GetString("group-exclude-regex"),
 			ChannelExclude: viper.GetString("channel-exclude-regex"),
 		},
-		ListenAddress:     viper.GetString("listen-address"),
-		XMLTVURL:          viper.GetString("xmltv-url"),
-		ProxyLogos:        viper.GetBool("proxy-logos"),
-		HDHomeRunPort:     viper.GetInt("hdhomerun-port"),
-		HDHomeRunTuners:   viper.GetInt("hdhomerun-tuners"),
+		ListenAddress:   viper.GetString("listen-address"),
+		XMLTVURL:        viper.GetString("xmltv-url"),
+		ProxyLogos:      viper.GetBool("proxy-logos"),
+		HDHomeRunPort:   viper.GetInt("hdhomerun-port"),
+		HDHomeRunTuners: viper.GetInt("hdhomerun-tuners"),
+		HDHomeRunFilter: filter.Patterns{
+			Group:          viper.GetString("hdhomerun-group-regex"),
+			Channel:        viper.GetString("hdhomerun-channel-regex"),
+			GroupExclude:   viper.GetString("hdhomerun-group-exclude-regex"),
+			ChannelExclude: viper.GetString("hdhomerun-channel-exclude-regex"),
+		},
 		MaxConnections:    viper.GetInt("max-connections"),
 		XtreamPassthrough: viper.GetBool("xtream-passthrough"),
 	}
@@ -246,6 +252,10 @@ func init() {
 	rootCmd.Flags().Bool("xtream-api-get-movies", false, "Add the provider's movies to the playlist generated from the xtream API (large catalogues make a playlist some players cannot load)")
 	rootCmd.Flags().String("user-agent", "", "User-Agent sent to the provider instead of the client's (some providers only answer known players)")
 	rootCmd.Flags().Int("hdhomerun-port", 0, "Port of an HDHomeRun tuner serving the live channels to Plex, Emby, Jellyfin or Channels DVR (local network only: it has no login)")
+	rootCmd.Flags().String("hdhomerun-group-regex", "", "Keep only the tuner's channels whose group matches this regular expression, after the proxy's filters")
+	rootCmd.Flags().String("hdhomerun-channel-regex", "", "Keep only the tuner's channels whose name matches this regular expression, after the proxy's filters")
+	rootCmd.Flags().String("hdhomerun-group-exclude-regex", "", "Leave out of the tuner the channels whose group matches this regular expression")
+	rootCmd.Flags().String("hdhomerun-channel-exclude-regex", "", "Leave out of the tuner the channels whose name matches this regular expression")
 	rootCmd.Flags().Int("hdhomerun-tuners", 0, "Number of tuners the HDHomeRun tuner announces (default: the connections the Xtream account allows, else 2)")
 	rootCmd.Flags().Bool("proxy-logos", false, "Serve the logos and covers of playlists and of the Xtream API through the proxy, so that players reach no other host")
 	rootCmd.Flags().Bool("no-stream-sharing", false, "Open one provider connection per client for a live stream, instead of sharing one between the clients watching it")

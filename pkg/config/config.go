@@ -94,6 +94,8 @@ type ProxyConfig struct {
 	// number of tuners it announces; 0 asks the provider.
 	HDHomeRunPort   int
 	HDHomeRunTuners int
+	// HDHomeRunFilter keeps the tuner's channels, after the proxy's filters.
+	HDHomeRunFilter filter.Patterns
 	// Users, when given, are the users of the proxy instead of the one of
 	// User and Password.
 	Users []User
