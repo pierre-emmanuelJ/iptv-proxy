@@ -21,6 +21,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -106,6 +107,9 @@ type Config struct {
 	// users are the proxy's users, the first one first.
 	users       []*proxyUser
 	usersByName map[string]*proxyUser
+	// passthrough are the provider accounts clients logged in with, in
+	// passthrough mode.
+	passthrough passthrough
 	// liveAccess are the live streams users with filters may watch.
 	liveAccess liveAccess
 }
@@ -151,6 +155,19 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 	if err := c.setupUsers(); err != nil {
 		return nil, err
 	}
+	if c.XtreamPassthrough {
+		// Nothing in the settings is secret: tokens are good for this run.
+		secret := make([]byte, 32)
+		if _, err := rand.Read(secret); err != nil {
+			return nil, err
+		}
+		if c.tokens, err = newAddressTokens(string(secret)); err != nil {
+			return nil, err
+		}
+		c.hub = newHub()
+		return c, nil
+	}
+
 	// Tokens and track addresses derive from the first user's credentials:
 	// with a single user, they stay what they were.
 	first := c.users[0]
@@ -158,13 +175,7 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 		return nil, err
 	}
 
-	c.hub = restream.NewHub()
-	c.hub.Retries = streamRetries
-	c.hub.Shareable = func(resp *http.Response, begin []byte) bool {
-		// A live stream has no end, hence no length. A playlist is rewritten
-		// for each client; an error is that client's to read.
-		return resp.StatusCode == http.StatusOK && resp.ContentLength < 0 && !hls.IsPlaylist(begin)
-	}
+	c.hub = newHub()
 
 	if c.endpointAntiColision == "" {
 		// The same settings give the same track addresses, restart after
@@ -182,6 +193,18 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 	}
 
 	return c, nil
+}
+
+// newHub shares the provider connections of live streams.
+func newHub() *restream.Hub {
+	hub := restream.NewHub()
+	hub.Retries = streamRetries
+	hub.Shareable = func(resp *http.Response, begin []byte) bool {
+		// A live stream has no end, hence no length. A playlist is rewritten
+		// for each client; an error is that client's to read.
+		return resp.StatusCode == http.StatusOK && resp.ContentLength < 0 && !hls.IsPlaylist(begin)
+	}
+	return hub
 }
 
 // Handler is the proxy's HTTP API.
@@ -335,6 +358,21 @@ func (c *Config) proxyBaseURL() string {
 
 func (c *Config) providerAccount() xtream.Account {
 	return xtream.Account{BaseURL: c.XtreamBaseURL, User: c.XtreamUser.String(), Password: c.XtreamPassword.String()}
+}
+
+// hiddenAccount is what clients must not learn from the provider's answers:
+// the proxy's account. In passthrough mode a client knows its own account,
+// and what it must not learn is where the provider is: its host takes the
+// place of a password.
+func (c *Config) hiddenAccount() xtream.Account {
+	if c.XtreamPassthrough {
+		provider, err := url.Parse(c.XtreamBaseURL)
+		if err != nil || provider.Hostname() == "" {
+			return xtream.Account{}
+		}
+		return xtream.Account{Password: provider.Hostname()}
+	}
+	return c.providerAccount()
 }
 
 // replaceURL returns the proxy's address of a track: the same path with the

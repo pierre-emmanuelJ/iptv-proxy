@@ -69,7 +69,7 @@ func (c *Config) cachedPlaylist(key string, u *proxyUser, build func() (*m3u.Pla
 
 // providerGet asks the provider's API and returns its whole answer.
 func (c *Config) providerGet(ctx *gin.Context, endpoint string, params url.Values) (int, http.Header, []byte, error) {
-	resp, err := c.upstream(ctx, c.apiClient, c.providerAccount().APIURL(endpoint, params), false)
+	resp, err := c.upstream(ctx, c.apiClient, c.accountOf(ctx).APIURL(endpoint, params), false)
 	if err != nil {
 		return 0, nil, nil, err
 	}
@@ -116,7 +116,7 @@ func (c *Config) xtreamGenerateM3u(ctx *gin.Context, extension string) (*m3u.Pla
 				[2]string{"tvg-logo", xtream.Text(stream["stream_icon"])},
 				[2]string{"group-title", group},
 			),
-			URI: c.providerAccount().StreamURL(prefix, xtream.Text(stream["stream_id"])+extension),
+			URI: c.accountOf(ctx).StreamURL(prefix, xtream.Text(stream["stream_id"])+extension),
 		}
 	})
 	if err != nil {
@@ -139,7 +139,7 @@ func (c *Config) xtreamGenerateM3u(ctx *gin.Context, extension string) (*m3u.Pla
 					[2]string{"tvg-logo", xtream.Text(movie["stream_icon"])},
 					[2]string{"group-title", group},
 				),
-				URI: c.providerAccount().StreamURL("movie/", xtream.Text(movie["stream_id"])+"."+format),
+				URI: c.accountOf(ctx).StreamURL("movie/", xtream.Text(movie["stream_id"])+"."+format),
 			}
 		})
 		if err != nil {
@@ -212,7 +212,7 @@ func (c *Config) xtreamGet(ctx *gin.Context) {
 func (c *Config) xtreamServeGet(ctx *gin.Context, params url.Values) {
 	// The same parameters give the same playlist: the cache key is the
 	// provider address they build.
-	key := c.providerAccount().APIURL("get.php", params)
+	key := c.accountOf(ctx).APIURL("get.php", params)
 
 	body, err := c.cachedPlaylist(key, userOf(ctx), func() (*m3u.Playlist, error) {
 		log.Printf("[iptv-proxy] %v | %s | xtream cache m3u file\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP())
@@ -294,7 +294,7 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context) {
 		c.errorPage(ctx, status, header, body)
 		return
 	}
-	body = xtream.Sanitize(body, c.providerAccount(), c.proxyAccount(u))
+	body = xtream.Sanitize(body, u.provider, c.proxyAccount(u))
 	if c.ProxyLogos {
 		body = xtream.RewriteValues(body, xtream.ImageFields, c.logoAddress)
 	}
@@ -325,14 +325,14 @@ func (c *Config) xtreamXMLTV(ctx *gin.Context) {
 			return keeping(kept), err
 		}
 	}
-	c.guide(ctx, c.providerAccount().APIURL("xmltv.php", ctx.Request.Form), userAnswerKey(u, "guide", ctx.Request.Form), mapping)
+	c.guide(ctx, u.provider.APIURL("xmltv.php", ctx.Request.Form), userAnswerKey(u, "guide", ctx.Request.Form), mapping)
 }
 
 // xtreamProviderStream serves "<prefix><user>/<password>/<rest>" of the
 // provider. Live television is shared between its clients; a movie or an
 // episode is a file each client reads on its own.
 func (c *Config) xtreamProviderStream(ctx *gin.Context, prefix, rest string, live bool) {
-	rpURL, err := url.Parse(c.providerAccount().StreamURL(prefix, rest))
+	rpURL, err := url.Parse(c.accountOf(ctx).StreamURL(prefix, rest))
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, errors.New("invalid stream address")) // nolint: errcheck
 		return
@@ -377,7 +377,7 @@ func (c *Config) xtreamStreamTimeshift(ctx *gin.Context) {
 		url.PathEscape(ctx.Param("start")),
 		url.PathEscape(ctx.Param("id")),
 	}, "/")
-	rpURL, err := url.Parse(c.providerAccount().StreamURL("timeshift/", rest))
+	rpURL, err := url.Parse(c.accountOf(ctx).StreamURL("timeshift/", rest))
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, errors.New("invalid stream address")) // nolint: errcheck
 		return

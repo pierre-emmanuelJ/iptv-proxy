@@ -121,12 +121,13 @@ func proxyConfig(cmd *cobra.Command) (*config.ProxyConfig, error) {
 			GroupExclude:   viper.GetString("group-exclude-regex"),
 			ChannelExclude: viper.GetString("channel-exclude-regex"),
 		},
-		ListenAddress:   viper.GetString("listen-address"),
-		XMLTVURL:        viper.GetString("xmltv-url"),
-		ProxyLogos:      viper.GetBool("proxy-logos"),
-		HDHomeRunPort:   viper.GetInt("hdhomerun-port"),
-		HDHomeRunTuners: viper.GetInt("hdhomerun-tuners"),
-		MaxConnections:  viper.GetInt("max-connections"),
+		ListenAddress:     viper.GetString("listen-address"),
+		XMLTVURL:          viper.GetString("xmltv-url"),
+		ProxyLogos:        viper.GetBool("proxy-logos"),
+		HDHomeRunPort:     viper.GetInt("hdhomerun-port"),
+		HDHomeRunTuners:   viper.GetInt("hdhomerun-tuners"),
+		MaxConnections:    viper.GetInt("max-connections"),
+		XtreamPassthrough: viper.GetBool("xtream-passthrough"),
 	}
 	users, err := configUsers()
 	if err != nil {
@@ -238,6 +239,7 @@ func init() {
 	rootCmd.Flags().String("xtream-user", "", "Xtream-code user login")
 	rootCmd.Flags().String("xtream-password", "", "Xtream-code password login")
 	rootCmd.Flags().String("xtream-base-url", "", "Xtream-code base url e.g(http://expample.tv:8080)")
+	rootCmd.Flags().Bool("xtream-passthrough", false, "Let each client log in with its own account of the Xtream provider (--xtream-base-url): no proxy users, no provider account in the proxy's settings")
 	rootCmd.Flags().Int("m3u-cache-expiration", 1, "Hours a playlist is kept before reading it again from the provider")
 	rootCmd.Flags().String("xmltv-url", "", "Guide (XMLTV) of the M3U playlist, an http(s) address or a local file, served at /xmltv.php (default: the guide the playlist names)")
 	rootCmd.Flags().BoolP("xtream-api-get", "", false, "Generate get.php from xtream API instead of get.php original endpoint")

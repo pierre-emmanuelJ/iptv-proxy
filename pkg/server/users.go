@@ -43,7 +43,9 @@ type proxyUser struct {
 	max int
 	// rules are the proxy's filters and the user's own.
 	rules *filter.Rules
-	slots slots
+	// provider is the provider account the user's requests are made with.
+	provider xtream.Account
+	slots    slots
 }
 
 // reservedNames are the first elements of the proxy's own paths: a user
@@ -52,6 +54,9 @@ var reservedNames = map[string]bool{"hls": true, "logo": true, "live": true, "mo
 
 // setupUsers builds the users from the configuration.
 func (c *Config) setupUsers() error {
+	if c.XtreamPassthrough {
+		return c.setupPassthrough() // users come with their requests
+	}
 	accounts := c.Users
 	if len(accounts) == 0 {
 		accounts = []config.User{{Name: c.User.String(), Password: c.Password.String(), MaxConnections: c.MaxConnections}}
@@ -76,6 +81,7 @@ func (c *Config) setupUsers() error {
 			password: config.CredentialString(account.Password),
 			max:      account.MaxConnections,
 			rules:    filter.Combine(c.rules, own),
+			provider: c.providerAccount(),
 		}
 		c.users = append(c.users, u)
 		c.usersByName[account.Name] = u
@@ -89,6 +95,15 @@ const userKey = "iptv-proxy user"
 // userOf is the user a request was authenticated as.
 func userOf(ctx *gin.Context) *proxyUser {
 	return ctx.MustGet(userKey).(*proxyUser)
+}
+
+// accountOf is the provider account a request is made with: its user's. A
+// request with no user (the tuner, an HLS segment) uses the proxy's.
+func (c *Config) accountOf(ctx *gin.Context) xtream.Account {
+	if u, ok := ctx.Get(userKey); ok {
+		return u.(*proxyUser).provider
+	}
+	return c.providerAccount()
 }
 
 // as marks the requests of a route that names its user in its path.
@@ -108,6 +123,10 @@ func (c *Config) authenticate(ctx *gin.Context) {
 	username, password := ctx.Request.Form.Get("username"), ctx.Request.Form.Get("password")
 	if username == "" || password == "" {
 		ctx.AbortWithError(http.StatusBadRequest, errors.New("missing username or password")) // nolint: errcheck
+		return
+	}
+	if c.XtreamPassthrough {
+		c.passthroughLogin(ctx, username, password)
 		return
 	}
 
@@ -205,6 +224,9 @@ func (c *Config) maskCredentials(address string) string {
 	path, query, hasQuery := strings.Cut(address, "?")
 
 	segments := strings.Split(path, "/")
+	if c.XtreamPassthrough {
+		c.maskAccount(segments)
+	}
 	for i, segment := range segments {
 		for _, u := range c.users {
 			for _, secret := range []config.CredentialString{u.name, u.password} {
@@ -226,4 +248,26 @@ func (c *Config) maskCredentials(address string) string {
 		}
 	}
 	return path + "?" + strings.Join(params, "&")
+}
+
+// streamPrefixes are the first elements of stream addresses that name their
+// kind before their account.
+var streamPrefixes = map[string]bool{"live": true, "movie": true, "series": true, "timeshift": true}
+
+// maskAccount hides the account of a stream address in passthrough mode,
+// where the proxy does not know the accounts beforehand: the two elements
+// after the kind of stream ("live"...), or the first two.
+func (c *Config) maskAccount(segments []string) {
+	i := 1 // after the leading "/"
+	if endpoint := strings.Trim(c.CustomEndpoint, "/"); endpoint != "" {
+		i += strings.Count(endpoint, "/") + 1
+	}
+	if i < len(segments) && streamPrefixes[segments[i]] {
+		i++
+	} else if i < len(segments) && reservedNames[segments[i]] {
+		return // the proxy's own addresses (hls, logo, play) name no account
+	}
+	if i+2 < len(segments) {
+		segments[i], segments[i+1] = "***", "***"
+	}
 }
