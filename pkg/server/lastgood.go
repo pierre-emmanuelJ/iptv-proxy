@@ -101,8 +101,9 @@ func (l *lastGood) get(key string) (goodAnswer, bool) {
 // keep compresses and keeps a whole answer.
 func (l *lastGood) keep(key, contentType string, body []byte) {
 	var buf bytes.Buffer
-	zw, _ := gzip.NewWriterLevel(&buf, gzip.BestSpeed) // a valid level
-	_, _ = zw.Write(body) // a bytes.Buffer does not fail
+	// BestSpeed is a valid level, and a bytes.Buffer does not fail.
+	zw, _ := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
+	_, _ = zw.Write(body)
 	_ = zw.Close()
 	l.put(key, contentType, buf.Bytes())
 }
