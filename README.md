@@ -185,6 +185,9 @@ wins over the variable, and the variable over the file.
 | `--xtream-api-get-movies` | `XTREAM_API_GET_MOVIES` | `false` | Add the provider's movies to that generated playlist. Off by default: a catalogue of tens of thousands of movies makes a playlist some players cannot load. Series are not added (see below). |
 | `--user-agent` | `USER_AGENT` | | User-Agent sent to the provider instead of the player's. Some providers only answer known players. |
 | `--no-stream-sharing` | `NO_STREAM_SHARING` | `false` | Open one provider connection per player for a live stream, instead of sharing one between the players watching it. |
+| `--proxy-logos` | `PROXY_LOGOS` | `false` | Serve the logos and covers of playlists and of the Xtream API through the proxy too, so that players reach no other host. |
+| `--hdhomerun-port` | `HDHOMERUN_PORT` | | Port of an HDHomeRun tuner for Plex, Emby, Jellyfin or Channels DVR. Local network only. See [Plex and other media servers](#plex-and-other-media-servers). |
+| `--hdhomerun-tuners` | `HDHOMERUN_TUNERS` | the account's connections, else `2` | Number of tuners announced: how many channels a media server plays at once. |
 | `--group-regex` | `GROUP_REGEX` | | Keep only the live channels whose group matches this regular expression. See [Filtering channels](#filtering-channels). |
 | `--channel-regex` | `CHANNEL_REGEX` | | Keep only the live channels whose name matches this regular expression. |
 | `--group-exclude-regex` | `GROUP_EXCLUDE_REGEX` | | Leave out the live channels whose group matches this regular expression. |
@@ -312,6 +315,50 @@ provider's address, encrypted: a player never sees the provider's host,
 credentials or session tokens. Nothing is stored, and tokens stay valid across
 restarts.
 
+## Plex and other media servers
+
+With `--hdhomerun-port`, the proxy also answers as an HDHomeRun network tuner
+on that port. Plex, Emby, Jellyfin and Channels DVR then see your live
+channels as a TV tuner, with a guide matched to them, and can record.
+
+```sh
+docker run -d --name iptv-proxy -p 8080:8080 -p 192.168.1.10:5004:5004 \
+  -e XTREAM_BASE_URL="http://provider.example:8080" \
+  -e XTREAM_USER=xtream_user \
+  -e XTREAM_PASSWORD=xtream_password \
+  -e PROXY_HOSTNAME=192.168.1.10 \
+  -e PROXY_USER=family \
+  -e PROXY_PASSWORD=choose-a-password \
+  -e HDHOMERUN_PORT=5004 \
+  -e GROUP_REGEX='^(FR|UK) ' \
+  pierro777/iptv-proxy:latest
+```
+
+In Plex: **Settings > Live TV & DVR > Set up Plex DVR**, then "Don't see your
+HDHomeRun device? Enter its network address manually": `192.168.1.10:5004`.
+When Plex asks for the guide, choose the XMLTV option and give
+`http://192.168.1.10:5004/guide.xml`.
+
+- **A tuner has no login**: anyone who reaches its port can watch. Keep it on
+  your local network: do not publish it on the Internet or behind your
+  reverse proxy. In exchange, nothing the tuner answers holds your proxy's or
+  your provider's credentials.
+- The tuner serves the live channels the filters keep, and only those. Use
+  the filters: a media server is not made for 10,000 channels.
+- With an Xtream account, a channel's number is its id at the provider: it
+  does not change when the provider reorders its list, so recordings stay on
+  their channel. With an M3U playlist, it is the track's `tvg-chno`, else its
+  place in the playlist.
+- The guide at `/guide.xml` names each channel by its tuner number, which is
+  how media servers match a guide to channels.
+- The tuner announces as many tuners as your Xtream account allows
+  connections (`--hdhomerun-tuners` to change it): a media server never
+  opens more streams than that.
+- Media servers expect MPEG-TS. With an Xtream account, the tuner asks the
+  provider for MPEG-TS; an M3U playlist of HLS streams may not play.
+- Plex finds a tuner by its address, entered by hand: automatic discovery on
+  the network is not supported.
+
 ## When the provider fails
 
 Providers fail now and then: an error for a minute, a maintenance page, a
@@ -425,7 +472,6 @@ docker compose up -d
 
 Planned, not available yet:
 
-- HDHomeRun emulation, for Plex.
 - Several users, each with their own credentials and limits.
 - Several providers behind one proxy, with failover.
 

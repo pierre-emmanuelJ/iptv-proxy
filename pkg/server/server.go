@@ -99,6 +99,9 @@ type Config struct {
 
 	// lastGood answers for a provider that fails.
 	lastGood *lastGood
+
+	// tuner is the HDHomeRun tuner's state.
+	tuner tuner
 }
 
 type cachedM3U struct {
@@ -219,14 +222,18 @@ func (c *Config) maskCredentials(address string) string {
 	return path + "?" + strings.Join(params, "&")
 }
 
-// Serve the iptv-proxy api
+// Serve runs the proxy, and the HDHomeRun tuner when it has a port. It
+// returns when one of them stops.
 func (c *Config) Serve() error {
-	srv := &http.Server{
-		Addr:              c.listenAddress(),
-		Handler:           c.Handler(),
-		ReadHeaderTimeout: 10 * time.Second,
+	servers := []*http.Server{{Addr: c.listenAddress(), Handler: c.Handler(), ReadHeaderTimeout: 10 * time.Second}}
+	if c.HDHomeRunPort != 0 {
+		servers = append(servers, &http.Server{Addr: c.hdhomerunAddress(), Handler: c.HDHomeRunHandler(), ReadHeaderTimeout: 10 * time.Second})
 	}
-	return srv.ListenAndServe()
+	stopped := make(chan error, len(servers))
+	for _, srv := range servers {
+		go func() { stopped <- srv.ListenAndServe() }()
+	}
+	return <-stopped
 }
 
 // listenAddress is the address the proxy listens on: every interface unless

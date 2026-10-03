@@ -290,6 +290,9 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context) {
 		return
 	}
 	body = xtream.Sanitize(body, c.providerAccount(), c.proxyAccount())
+	if c.ProxyLogos {
+		body = xtream.RewriteValues(body, xtream.ImageFields, c.logoAddress)
+	}
 	if body, err = c.filterAPIList(ctx, action, body); err != nil {
 		c.upstreamError(ctx, err)
 		return
@@ -309,11 +312,14 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context) {
 // hundreds of megabytes. With filters, the channels left out are taken out
 // on the way.
 func (c *Config) xtreamXMLTV(ctx *gin.Context) {
-	var channels func() (map[string]bool, error)
+	var mapping func() (channelMap, error)
 	if c.rules.Active() {
-		channels = func() (map[string]bool, error) { return c.guideChannels(ctx) }
+		mapping = func() (channelMap, error) {
+			kept, err := c.guideChannels(ctx)
+			return keeping(kept), err
+		}
 	}
-	c.guide(ctx, c.providerAccount().APIURL("xmltv.php", ctx.Request.Form), channels)
+	c.guide(ctx, c.providerAccount().APIURL("xmltv.php", ctx.Request.Form), answerKey("guide", ctx.Request.Form), mapping)
 }
 
 // xtreamProviderStream serves "<prefix><user>/<password>/<rest>" of the

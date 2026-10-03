@@ -60,6 +60,8 @@ type m3uState struct {
 	// of the tracks kept.
 	guide    string
 	guideIDs map[string]bool
+	// live are the channels of the HDHomeRun tuner, when there is one.
+	live []tunerChannel
 	// next is when the playlist is read again.
 	next time.Time
 }
@@ -98,6 +100,9 @@ func (c *Config) loadM3U(ctx context.Context) error {
 		if id, ok := m3u.Attribute(track.ExtInf, "tvg-id"); ok && id != "" {
 			state.guideIDs[id] = true
 		}
+	}
+	if c.HDHomeRunPort != 0 {
+		state.live = m3uTunerChannels(kept.Tracks)
 	}
 	c.m3u.current.Store(state)
 
@@ -200,9 +205,9 @@ func (c *Config) m3uXMLTV(ctx *gin.Context) {
 		ctx.AbortWithStatus(http.StatusNotFound)
 		return
 	}
-	var channels func() (map[string]bool, error)
+	var mapping func() (channelMap, error)
 	if c.rules.Active() {
-		channels = func() (map[string]bool, error) { return state.guideIDs, nil }
+		mapping = func() (channelMap, error) { return keeping(state.guideIDs), nil }
 	}
-	c.guide(ctx, state.guide, channels)
+	c.guide(ctx, state.guide, answerKey("guide", ctx.Request.Form), mapping)
 }

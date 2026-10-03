@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"io"
 	"net/url"
 	"strconv"
 	"strings"
@@ -341,6 +342,97 @@ func FilterList(body []byte, keep func(entry map[string]any) bool) ([]byte, erro
 		out.WriteByte('}')
 	}
 	return out.Bytes(), nil
+}
+
+// ImageFields are the fields of Xtream answers that hold an image address
+// (a logo, a cover, backdrops), alone or in a list.
+var ImageFields = map[string]bool{
+	"stream_icon": true, "cover": true, "cover_big": true, "movie_image": true,
+	"backdrop_path": true, "logo": true, "icon": true,
+}
+
+// RewriteValues replaces, in an answer, the string values of the given
+// fields, and the strings of a list held by such a field, with rewrite's
+// answer for them ("" leaves a value alone). Everything else is kept byte
+// for byte. An answer that is not JSON is returned as it is.
+func RewriteValues(body []byte, fields map[string]bool, rewrite func(string) string) []byte {
+	type frame struct {
+		object    bool
+		expectKey bool
+		field     bool // the value being read belongs to one of the fields
+	}
+	var (
+		stack []frame
+		out   bytes.Buffer
+		last  int
+	)
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.UseNumber()
+
+	for {
+		before := int(dec.InputOffset())
+		tok, err := dec.Token()
+		if err != nil {
+			if err != io.EOF || len(stack) != 0 {
+				return body
+			}
+			break
+		}
+		// where the token starts: after the separators Token skipped
+		start := before
+		for start < len(body) && strings.IndexByte(" \t\r\n,:", body[start]) >= 0 {
+			start++
+		}
+
+		var top *frame
+		if len(stack) > 0 {
+			top = &stack[len(stack)-1]
+		}
+		inField := top != nil && top.field && (!top.object || !top.expectKey)
+
+		switch t := tok.(type) {
+		case json.Delim:
+			switch t {
+			case '{', '[':
+				// a list under one of the fields holds addresses; an object
+				// under it does not
+				stack = append(stack, frame{object: t == '{', expectKey: t == '{', field: t == '[' && inField})
+				if top != nil && top.object {
+					top.expectKey = true
+					top.field = false
+				}
+				continue
+			case '}', ']':
+				stack = stack[:len(stack)-1]
+				continue
+			}
+		case string:
+			if top != nil && top.object && top.expectKey {
+				top.expectKey = false
+				top.field = fields[t]
+				continue
+			}
+			if inField {
+				if replacement := rewrite(t); replacement != "" {
+					out.Write(body[last:start])
+					enc := json.NewEncoder(&out)
+					enc.SetEscapeHTML(false)    // "&" in an address stays "&"
+					_ = enc.Encode(replacement) // a string always encodes
+					out.Truncate(out.Len() - 1) // Encode ends with a newline
+					last = int(dec.InputOffset())
+				}
+			}
+		}
+		if top != nil && top.object {
+			top.expectKey = true
+			top.field = false
+		}
+	}
+	if last == 0 {
+		return body
+	}
+	out.Write(body[last:])
+	return out.Bytes()
 }
 
 func sortNumeric(keys []string) {

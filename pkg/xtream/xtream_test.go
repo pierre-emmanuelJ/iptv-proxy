@@ -281,6 +281,56 @@ func TestFilterList(t *testing.T) {
 	}
 }
 
+func TestRewriteValues(t *testing.T) {
+	mark := func(s string) string {
+		if strings.HasPrefix(s, "http") {
+			return "P(" + s + ")"
+		}
+		return ""
+	}
+	for name, c := range map[string][2]string{
+		"list of streams": {
+			`[{"name":"cover","stream_icon":"http:\/\/x\/1.png","num":1}, {"stream_icon":""}]`,
+			`[{"name":"cover","stream_icon":"P(http://x/1.png)","num":1}, {"stream_icon":""}]`,
+		},
+		"nested, with a list of backdrops": {
+			`{"info":{"cover_big":"https://i/a.jpg?x=1&y=2","backdrop_path":["https://i/b.jpg","https://i/c.jpg"],"genre":"cover"},"episodes":{"1":[{"info":{"movie_image":"https://i/e.jpg"}}]}}`,
+			`{"info":{"cover_big":"P(https://i/a.jpg?x=1&y=2)","backdrop_path":["P(https://i/b.jpg)","P(https://i/c.jpg)"],"genre":"cover"},"episodes":{"1":[{"info":{"movie_image":"P(https://i/e.jpg)"}}]}}`,
+		},
+		// a field holding an object or a number is not an address
+		"other shapes": {
+			`{"cover":{"url":"http://i/x.jpg"},"logo":12,"icon":null,"backdrop_path":[{"a":"http://i/y.jpg"}]}`,
+			`{"cover":{"url":"http://i/x.jpg"},"logo":12,"icon":null,"backdrop_path":[{"a":"http://i/y.jpg"}]}`,
+		},
+		"a value equal to a field name": {
+			`{"name":"stream_icon","stream_icon":"http://i/z.png"}`,
+			`{"name":"stream_icon","stream_icon":"P(http://i/z.png)"}`,
+		},
+		"not JSON":  {`<html>stream_icon</html>`, `<html>stream_icon</html>`},
+		"truncated": {`[{"stream_icon":"http://i/1.png"`, `[{"stream_icon":"http://i/1.png"`},
+	} {
+		if got := string(RewriteValues([]byte(c[0]), ImageFields, mark)); got != c[1] {
+			t.Errorf("%s:\n got %s\nwant %s", name, got, c[1])
+		}
+	}
+}
+
+func FuzzRewriteValues(f *testing.F) {
+	f.Add(`[{"stream_icon":"http://x/1.png","a":[1,{"cover":"y"}]}]`)
+	f.Add(`{"backdrop_path":["a","b"],"cover":{"cover":"c"}}`)
+	f.Fuzz(func(t *testing.T, doc string) {
+		// rewriting nothing changes nothing
+		if got := RewriteValues([]byte(doc), ImageFields, func(string) string { return "" }); string(got) != doc {
+			t.Fatalf("changed %q into %q", doc, got)
+		}
+		// valid JSON stays valid
+		got := RewriteValues([]byte(doc), ImageFields, func(s string) string { return s + "\"" })
+		if json.Valid([]byte(doc)) && !json.Valid(got) {
+			t.Fatalf("%q became invalid: %q", doc, got)
+		}
+	})
+}
+
 func mustJSON(v any) string {
 	b, err := json.Marshal(v)
 	if err != nil {
