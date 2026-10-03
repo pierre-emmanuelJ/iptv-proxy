@@ -160,6 +160,41 @@ func TestTunerFiltered(t *testing.T) {
 	}
 }
 
+// The tuner's own filters narrow its channels, not the proxy's: players keep
+// every channel.
+func TestTunerOwnFilters(t *testing.T) {
+	p := newProvider(t)
+	var c *Config
+	tuner := tunerOf(t, p, func(conf *config.ProxyConfig) {
+		conf.Filter = filter.Patterns{ChannelExclude: "^Lost$"}
+		conf.HDHomeRunFilter = filter.Patterns{GroupExclude: "^News$"}
+		c, _ = NewServer(conf)
+	})
+
+	if lineup := lineupOf(t, tuner); len(lineup) != 1 || lineup[0].GuideName != "Two" {
+		t.Errorf("lineup: %+v", lineup) // News and Lost left out
+	}
+	if resp, _ := get(t, tuner+"/auto/v1"); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("a channel the tuner leaves out: status %d, want 404", resp.StatusCode)
+	}
+	players := httptest.NewServer(c.Handler())
+	t.Cleanup(players.Close)
+	_, streams := get(t, players.URL+"/player_api.php?"+creds+"&action=get_live_streams")
+	if !strings.Contains(streams, `"One"`) || strings.Contains(streams, `"Lost"`) {
+		t.Errorf("players' live streams:\n%s", streams)
+	}
+}
+
+func TestTunerOwnFiltersInvalid(t *testing.T) {
+	_, err := NewServer(&config.ProxyConfig{
+		HostConfig:      &config.HostConfiguration{Hostname: "proxy.example", Port: 8080},
+		HDHomeRunFilter: filter.Patterns{Group: "("},
+	})
+	if err == nil || !strings.Contains(err.Error(), "HDHomeRun") {
+		t.Errorf("error: %v", err)
+	}
+}
+
 // The guide names each channel by its tuner number, as media servers match
 // them; channels of no tuner channel are left out.
 func TestTunerGuide(t *testing.T) {
@@ -194,6 +229,15 @@ func TestTunerM3U(t *testing.T) {
 		c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword = "", "", ""
 		c.RemoteURL, _ = url.Parse(file)
 	})
+
+	narrowed := tunerOf(t, p, func(c *config.ProxyConfig) {
+		c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword = "", "", ""
+		c.RemoteURL, _ = url.Parse(file)
+		c.HDHomeRunFilter = filter.Patterns{Channel: "^One$"}
+	})
+	if lineup := lineupOf(t, narrowed); len(lineup) != 1 || lineup[0].GuideName != "One" {
+		t.Errorf("the tuner's own filters: %+v", lineup)
+	}
 
 	lineup := lineupOf(t, tuner)
 	// tvg-chno, else the place among live tracks; a file is not a channel

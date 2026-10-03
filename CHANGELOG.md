@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.2.0
+
+### Added
+
+- **Filters of the HDHomeRun tuner alone**: `--hdhomerun-group-regex`,
+  `--hdhomerun-channel-regex`, `--hdhomerun-group-exclude-regex` and
+  `--hdhomerun-channel-exclude-regex` (`HDHOMERUN_GROUP_REGEX`...), applied
+  after the proxy's filters. A media server can get a few groups while
+  players keep every channel; before, the tuner only had the proxy's
+  filters, which hold for everyone.
+
 ## 4.1.0
 
 ### Added
