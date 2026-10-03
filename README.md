@@ -178,8 +178,9 @@ wins over the variable, and the variable over the file.
 | `--password` | `PROXY_PASSWORD` (or `PASSWORD`) | `passwordtest` | Password your players log in with. |
 | `--m3u-file-name` | `M3U_FILE_NAME` | `iptv.m3u` | Name of the playlist the proxy serves: `http://host:port/iptv.m3u`. |
 | `--custom-endpoint` | `CUSTOM_ENDPOINT` | | Prefix put before every path: `http://host:port/<custom-endpoint>/iptv.m3u`. |
-| `--custom-id` | `CUSTOM_ID` | random | First path element of M3U track addresses. Random at each start by default; set it to keep the same track addresses across restarts. |
-| `--m3u-cache-expiration` | `M3U_CACHE_EXPIRATION` | `1` | Hours a playlist fetched from an Xtream provider is kept before asking for it again. |
+| `--custom-id` | `CUSTOM_ID` | derived from your settings | First path element of M3U track addresses. The same settings give the same addresses, restart after restart. |
+| `--m3u-cache-expiration` | `M3U_CACHE_EXPIRATION` | `1` | Hours a playlist is kept before reading it again from the provider (M3U playlists included since v3.13.0). |
+| `--xmltv-url` | `XMLTV_URL` | the guide the playlist names | Guide (XMLTV) of an M3U playlist: an `http(s)` address or a local file. It is served at `/xmltv.php`. |
 | `--xtream-api-get` | `XTREAM_API_GET` | `false` | Build the `get.php` playlist (live channels) from the provider's API, for providers that disabled `get.php`. |
 | `--xtream-api-get-movies` | `XTREAM_API_GET_MOVIES` | `false` | Add the provider's movies to that generated playlist. Off by default: a catalogue of tens of thousands of movies makes a playlist some players cannot load. Series are not added (see below). |
 | `--user-agent` | `USER_AGENT` | | User-Agent sent to the provider instead of the player's. Some providers only answer known players. |
@@ -207,10 +208,17 @@ Good to know:
 
 ## M3U playlists
 
-The proxy reads the provider's playlist once, at startup, and serves it at
+The proxy reads the provider's playlist at startup and serves it at
 `/iptv.m3u` with every track address replaced by its own. All other lines
 (names, logos, groups, guide IDs, player options) are kept as the provider
-wrote them. Restart the proxy to pick up a new version of the playlist.
+wrote them. When a player asks for it and it is older than
+`--m3u-cache-expiration` (one hour by default), the playlist is read again: no
+restart is needed to pick up the provider's changes. If the provider fails,
+the previous playlist is kept.
+
+A track's address on the proxy is derived from its address at the provider:
+it stays the same when the playlist is read again, wherever the track moves
+in it, and from one start of the proxy to the next.
 
 The provider's playlist:
 
@@ -227,13 +235,20 @@ What your players get:
 ```m3u
 #EXTM3U
 #EXTINF:-1 tvg-id="news.example" tvg-name="News" tvg-logo="http://provider.example/logos/news.png" group-title="News",News HD
-http://192.168.1.10:8080/e3c0c308/family/choose-a-password/0/1.ts
+http://192.168.1.10:8080/e3c0c308/family/choose-a-password/4f2a9c1d7b21e0aa/1.ts
 #EXTINF:-1 tvg-id="sport.example" tvg-name="Sport" tvg-logo="http://provider.example/logos/sport.png" group-title="Sport",Sport HD
-http://192.168.1.10:8080/e3c0c308/family/choose-a-password/1/2.m3u8
+http://192.168.1.10:8080/e3c0c308/family/choose-a-password/9b03e5c2d8a17f46/2.m3u8
 ```
 
-`e3c0c308` is the `--custom-id`. Tokens and other query parameters of the
-provider's addresses stay on the proxy.
+`e3c0c308` is the `--custom-id`, and `4f2a9c1d7b21e0aa` names the track.
+Tokens and other query parameters of the provider's addresses stay on the
+proxy.
+
+When the playlist names a guide (`url-tvg` or `x-tvg-url` in its first line),
+or `--xmltv-url` gives one, the proxy serves it at
+`/xmltv.php?username=...&password=...`, and the playlist names that address
+instead. Players load the guide through the proxy, and the filters apply to
+it.
 
 Some playlists name the provider's credentials outside of the track
 addresses too: a guide address in `url-tvg`, a catch-up address in
@@ -296,6 +311,19 @@ through the proxy, on any host and after any redirect. The token is the
 provider's address, encrypted: a player never sees the provider's host,
 credentials or session tokens. Nothing is stored, and tokens stay valid across
 restarts.
+
+## When the provider fails
+
+Providers fail now and then: an error for a minute, a maintenance page, a
+guide that will not generate. The proxy keeps the last answer the provider
+gave in full for the lists players load (the login, categories, channels,
+movies, series, details, playlists and the guide), compressed in memory. When
+the provider fails, players get that answer instead of an error, and the log
+says so. Streams themselves are not kept: when the provider is down, nothing
+plays.
+
+A refusal (wrong account, expired subscription) is passed on: it says
+something you need to know.
 
 ## Filtering channels
 
@@ -397,8 +425,6 @@ docker compose up -d
 
 Planned, not available yet:
 
-- Keeping the last good playlist, lists and guide when the provider fails,
-  and reloading an M3U playlist without a restart.
 - HDHomeRun emulation, for Plex.
 - Several users, each with their own credentials and limits.
 - Several providers behind one proxy, with failover.

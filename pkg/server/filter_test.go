@@ -173,18 +173,18 @@ func TestM3UPlaylistIsFiltered(t *testing.T) {
 	base := m3uProxy(t, p, filtered(filter.Patterns{Group: "^News$", ChannelExclude: "Three"}))
 
 	_, body := get(t, base+"/iptv.m3u?"+creds)
-	want := "#EXTM3U url-tvg=\"http://guide.example/epg.xml\"\n" +
+	want := "#EXTM3U url-tvg=\"http://proxy.example:8080/xmltv.php?username=me&password=secret\"\n" +
 		"#EXTINF:-1 tvg-id=\"\" tvg-logo=\"data:image/png;base64,AAAA\" group-title=\"News\",One, the first\n" +
 		"#EXTGRP:News\n" +
-		"http://proxy.example:8080/tracks/me/secret/0/a.ts\n"
+		"http://proxy.example:8080" + trackPath(p.URL+"/stream/a.ts?token=1") + "\n"
 	if body != want {
 		t.Errorf("playlist:\n%s\nwant:\n%s", body, want)
 	}
 	// a track left out has no address on the proxy
-	if resp, _ := get(t, base+"/tracks/me/secret/1/b.m3u8"); resp.StatusCode != http.StatusNotFound {
+	if resp, _ := get(t, base+trackPath(p.URL+"/hls/b.m3u8?token=2")); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("a track left out is served: status %d", resp.StatusCode)
 	}
-	if resp, track := get(t, base+"/tracks/me/secret/0/a.ts"); resp.StatusCode != http.StatusOK || track != "track-a" {
+	if resp, track := get(t, base+trackPath(p.URL+"/stream/a.ts?token=1")); resp.StatusCode != http.StatusOK || track != "track-a" {
 		t.Errorf("kept track: status %d, body %q", resp.StatusCode, track)
 	}
 }
@@ -199,10 +199,11 @@ func TestM3UPlaylistDoesNotGiveTheProviderAway(t *testing.T) {
 	})
 
 	_, body := get(t, base+"/iptv.m3u?"+creds)
-	want := "#EXTM3U x-tvg-url=\"http://guide.example/epg.xml\"\n" +
+	// the guide it names, without the provider's password, is the proxy's
+	want := "#EXTM3U x-tvg-url=\"http://proxy.example:8080/xmltv.php?username=me&password=secret\"\n" +
 		"#EXTINF:-1 tvg-logo=\"http://logos.example/one.png\" group-title=\"News\",One\n" +
 		"#EXTVLCOPT:http-user-agent=Player\n" +
-		"http://proxy.example:8080/tracks/me/secret/0/a.ts\n"
+		"http://proxy.example:8080" + trackPath(p.URL+"/stream/a.ts") + "\n"
 	if body != want {
 		t.Errorf("playlist:\n%s\nwant:\n%s", body, want)
 	}

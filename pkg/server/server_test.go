@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -51,6 +52,11 @@ type provider struct {
 	guideDelay time.Duration
 	// streamClosed is closed once the endless stream saw its client leave.
 	streamClosed chan struct{}
+	// down makes the API, playlists and guides fail, as a provider does now
+	// and then.
+	down atomic.Bool
+	// garbage makes the API answer a page that is not JSON, with a 200.
+	garbage atomic.Bool
 }
 
 func (p *provider) hit(r *http.Request) {
@@ -164,6 +170,15 @@ func newProvider(t *testing.T) *provider {
 	mux := http.NewServeMux()
 	authorized := func(w http.ResponseWriter, r *http.Request) bool {
 		p.hit(r)
+		if p.down.Load() {
+			w.WriteHeader(http.StatusBadGateway)
+			fmt.Fprint(w, "<html>502 Bad Gateway</html>")
+			return false
+		}
+		if p.garbage.Load() {
+			fmt.Fprint(w, "<html>Down for maintenance</html>")
+			return false
+		}
 		if r.URL.Query().Get("username") != xUser || r.URL.Query().Get("password") != xPass {
 			fmt.Fprint(w, `{"user_info":{"auth":0}}`)
 			return false
@@ -238,6 +253,14 @@ func newProvider(t *testing.T) *provider {
 			return
 		}
 		time.Sleep(p.guideDelay) // a large guide takes a while to generate
+		if r.URL.Query().Get("cut") != "" {
+			// a guide whose connection breaks halfway
+			w.Header().Set("Content-Length", fmt.Sprint(len(providerGuide)))
+			fmt.Fprint(w, providerGuide[:len(providerGuide)/2])
+			conn, _, _ := w.(http.Hijacker).Hijack()
+			conn.Close() // nolint: errcheck
+			return
+		}
 		if r.URL.Query().Get("gzip") != "" {
 			// a guide some providers send compressed, unasked
 			w.Header().Set("Content-Type", "application/gzip")
@@ -366,13 +389,26 @@ func newProvider(t *testing.T) *provider {
 	// Plain M3U provider
 	mux.HandleFunc("/list.m3u", func(w http.ResponseWriter, r *http.Request) {
 		p.hit(r)
-		fmt.Fprintf(w, "#EXTM3U url-tvg=\"http://guide.example/epg.xml\"\n"+
+		if p.down.Load() {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		fmt.Fprintf(w, "#EXTM3U url-tvg=\"%[1]s/epg.xml\"\n"+
 			"#EXTINF:-1 tvg-id=\"\" tvg-logo=\"data:image/png;base64,AAAA\" group-title=\"News\",One, the first\n"+
 			"#EXTGRP:News\n"+
 			"%[1]s/stream/a.ts?token=1\n"+
 			"#EXTINF:-1,Broken\nhttp://%%zz/broken\n"+
 			"#EXTINF:-1,Two\n%[1]s/hls/b.m3u8?token=2\n"+
 			"#EXTINF:-1,Three\n%[1]s/redirected/c.m3u8\n", p.URL)
+	})
+	mux.HandleFunc("/epg.xml", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		if p.down.Load() {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "text/xml")
+		fmt.Fprint(w, providerGuide)
 	})
 	mux.HandleFunc("/redirected/c.m3u8", func(w http.ResponseWriter, r *http.Request) {
 		p.hit(r)
@@ -1079,7 +1115,7 @@ func TestM3UTracksAreSharedUnlessTheyAreFiles(t *testing.T) {
 	}
 	base := m3uProxy(t, p, func(c *config.ProxyConfig) { c.RemoteURL, _ = url.Parse(file) })
 
-	for track, want := range map[string]int{"/tracks/me/secret/0/endless": 1, "/tracks/me/secret/1/endless.mp4": 2} {
+	for track, want := range map[string]int{trackPath(p.URL + "/stream/endless"): 1, trackPath(p.URL + "/stream/endless.mp4"): 2} {
 		leaveFirst := watch(t, base+track)
 		leaveSecond := watch(t, base+track)
 		provider := "/stream/" + track[strings.LastIndex(track, "/")+1:]
@@ -1242,7 +1278,7 @@ func TestHLSTokens(t *testing.T) {
 		"garbage":                 "/hls/not-a-token/seg.ts",
 		"empty-ish":               "/hls/AAAA/seg.ts",
 		"truncated":               "/hls/" + token[:len(token)-4] + "/seg.ts",
-		"altered":                 "/hls/" + token[:10] + "A" + token[11:] + "/seg.ts",
+		"altered":                 "/hls/" + token[:10] + otherChar(token[10]) + token[11:] + "/seg.ts",
 		"issued by another proxy": foreign,
 	} {
 		if ref == good {
@@ -1260,6 +1296,14 @@ func TestHLSTokens(t *testing.T) {
 	if resp, body := get(t, base+"/hls/"+token+"/whatever.ts"); resp.StatusCode != http.StatusOK || body != "segment-3-1" {
 		t.Errorf("status %d, body %q", resp.StatusCode, body)
 	}
+}
+
+// otherChar returns a token character other than c.
+func otherChar(c byte) string {
+	if c == 'A' {
+		return "B"
+	}
+	return "A"
 }
 
 func TestAddressTokens(t *testing.T) {
@@ -1297,6 +1341,16 @@ func TestAddressTokens(t *testing.T) {
 
 // --- plain M3U ---
 
+// trackPath is the proxy's path of the track at address, with the test's
+// --custom-id and credentials.
+func trackPath(address string) string {
+	u, err := url.Parse(address)
+	if err != nil {
+		panic(err)
+	}
+	return "/tracks/me/secret/" + trackKey(address) + "/" + path.Base(u.Path)
+}
+
 func m3uProxy(t *testing.T, p *provider, mutate func(*config.ProxyConfig)) string {
 	base := proxy(t, p, func(c *config.ProxyConfig) {
 		c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword = "", "", ""
@@ -1318,14 +1372,15 @@ func TestM3UPlaylist(t *testing.T) {
 
 	resp, body := get(t, base+"/iptv.m3u?"+creds)
 	// every line of the provider is kept; the track with an invalid address is gone
-	want := "#EXTM3U url-tvg=\"http://guide.example/epg.xml\"\n" +
+	// the guide is the proxy's
+	want := "#EXTM3U url-tvg=\"http://proxy.example:8080/xmltv.php?username=me&password=secret\"\n" +
 		"#EXTINF:-1 tvg-id=\"\" tvg-logo=\"data:image/png;base64,AAAA\" group-title=\"News\",One, the first\n" +
 		"#EXTGRP:News\n" +
-		"http://proxy.example:8080/tracks/me/secret/0/a.ts\n" +
+		"http://proxy.example:8080" + trackPath(p.URL+"/stream/a.ts?token=1") + "\n" +
 		"#EXTINF:-1,Two\n" +
-		"http://proxy.example:8080/tracks/me/secret/1/b.m3u8\n" +
+		"http://proxy.example:8080" + trackPath(p.URL+"/hls/b.m3u8?token=2") + "\n" +
 		"#EXTINF:-1,Three\n" +
-		"http://proxy.example:8080/tracks/me/secret/2/c.m3u8\n"
+		"http://proxy.example:8080" + trackPath(p.URL+"/redirected/c.m3u8") + "\n"
 	if resp.StatusCode != http.StatusOK || body != want {
 		t.Fatalf("status %d, playlist:\n%s\nwant:\n%s", resp.StatusCode, body, want)
 	}
@@ -1339,14 +1394,14 @@ func TestM3UTracks(t *testing.T) {
 	p := newProvider(t)
 	base := m3uProxy(t, p, nil)
 
-	if resp, body := get(t, base+"/tracks/me/secret/0/a.ts"); resp.StatusCode != http.StatusOK || body != "track-a" {
+	if resp, body := get(t, base+trackPath(p.URL+"/stream/a.ts?token=1")); resp.StatusCode != http.StatusOK || body != "track-a" {
 		t.Errorf("track: status %d, body %q", resp.StatusCode, body)
 	}
 	if q := p.query("/stream/a.ts"); q != "token=1" {
 		t.Errorf("the track's own query was lost: %q", q)
 	}
 
-	resp, playlist := get(t, base+"/tracks/me/secret/1/b.m3u8")
+	resp, playlist := get(t, base+trackPath(p.URL+"/hls/b.m3u8?token=2"))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("HLS playlist: status %d", resp.StatusCode)
 	}
@@ -1358,7 +1413,8 @@ func TestM3UTracks(t *testing.T) {
 		t.Errorf("HLS segment: status %d, body %q", resp.StatusCode, body)
 	}
 
-	for _, path := range []string{"/tracks/me/nope/0/a.ts", "/tracks/me/secret/7/a.ts", "/other/me/secret/0/a.ts"} {
+	key := trackKey(p.URL + "/stream/a.ts?token=1")
+	for _, path := range []string{"/tracks/me/nope/" + key + "/a.ts", "/tracks/me/secret/0/a.ts", "/tracks/me/secret/" + trackKey("http://elsewhere.example/a.ts") + "/a.ts", "/other/me/secret/" + key + "/a.ts"} {
 		if resp, _ := get(t, base+path); resp.StatusCode != http.StatusNotFound {
 			t.Errorf("%s: status = %d, want 404", path, resp.StatusCode)
 		}
@@ -1371,7 +1427,7 @@ func TestM3UHLSMasterPlaylistOnAnotherHost(t *testing.T) {
 	p := newProvider(t)
 	base := m3uProxy(t, p, nil)
 
-	_, master := get(t, base+"/tracks/me/secret/2/c.m3u8")
+	_, master := get(t, base+trackPath(p.URL+"/redirected/c.m3u8"))
 	refs := hlsAddresses(t, master, "")
 	if len(refs) != 2 || !strings.HasSuffix(refs[0], "/en.m3u8") || !strings.HasSuffix(refs[1], "/v1.m3u8") {
 		t.Fatalf("master playlist:\n%s", master)
@@ -1411,7 +1467,7 @@ func TestM3UAdvertisedAddress(t *testing.T) {
 	})
 
 	_, body := get(t, base+"/tv/iptv.m3u?username=a+user&password=p%40ss%2Fword")
-	if want := "https://proxy.example:443/tv/tracks/a%20user/p@ss%2Fword/0/a.ts\n"; !strings.Contains(body, want) {
+	if want := "https://proxy.example:443/tv/tracks/a%20user/p@ss%2Fword/" + trackKey(p.URL+"/stream/a.ts?token=1") + "/a.ts\n"; !strings.Contains(body, want) {
 		t.Errorf("want %s in:\n%s", want, body)
 	}
 }
@@ -1424,7 +1480,7 @@ func TestM3UFromAFile(t *testing.T) {
 	}
 	base := m3uProxy(t, p, func(c *config.ProxyConfig) { c.RemoteURL, _ = url.Parse(file) })
 
-	if resp, body := get(t, base+"/tracks/me/secret/0/a.ts"); resp.StatusCode != http.StatusOK || body != "track-a" {
+	if resp, body := get(t, base+trackPath(p.URL+"/stream/a.ts")); resp.StatusCode != http.StatusOK || body != "track-a" {
 		t.Errorf("status %d, body %q", resp.StatusCode, body)
 	}
 }

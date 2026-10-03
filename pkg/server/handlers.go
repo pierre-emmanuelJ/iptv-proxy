@@ -51,26 +51,9 @@ const (
 	maxPlaylistBytes = 16 << 20
 )
 
-func (c *Config) getM3U(ctx *gin.Context) {
-	c.serveM3U(ctx, c.proxyfiedM3U)
-}
-
 func (c *Config) serveM3U(ctx *gin.Context, playlist []byte) {
 	ctx.Header("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, c.M3UFileName))
 	ctx.Data(http.StatusOK, "application/octet-stream", playlist)
-}
-
-func (c *Config) reverseProxy(track *url.URL) gin.HandlerFunc {
-	// A playlist does not say what a track is. A file is recognized by its
-	// extension; anything else may be live television.
-	live := !fileExtensions[strings.ToLower(path.Ext(track.Path))]
-	return func(ctx *gin.Context) {
-		if live {
-			c.streamLive(ctx, track)
-			return
-		}
-		c.stream(ctx, track)
-	}
 }
 
 // fileExtensions are those of media with a beginning and an end: each client

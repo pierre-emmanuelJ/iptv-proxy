@@ -19,6 +19,7 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -51,6 +52,11 @@ func (c *Config) cachedPlaylist(key string, build func() (*m3u.Playlist, error))
 
 	playlist, err := build()
 	if err != nil {
+		if cached, ok := c.m3uCache[key]; ok {
+			// The last playlist plays; an error does not.
+			log.Printf("[iptv-proxy] playlist: the provider failed (%v), serving the one from %s ago", err, time.Since(cached.at).Round(time.Second))
+			return cached.body, nil
+		}
 		return nil, err
 	}
 	_, body := c.proxify(playlist, true)
@@ -251,7 +257,13 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context) {
 	params := ctx.Request.Form
 	action := params.Get("action")
 
+	key := answerKey("player_api.php", params)
 	status, header, body, err := c.providerGet(ctx, "player_api.php", params)
+	// A maintenance page or a cut list is no answer either.
+	invalid := err == nil && status == http.StatusOK && !json.Valid(body)
+	if (invalid || providerFailed(status, err)) && c.lastGood.serve(ctx, key, failure(status, err, invalid)) {
+		return
+	}
 	if err != nil {
 		c.upstreamError(ctx, err)
 		return
@@ -287,6 +299,9 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context) {
 	if contentType == "" {
 		contentType = "application/json"
 	}
+	if status == http.StatusOK && !invalid {
+		c.lastGood.keep(key, contentType, body)
+	}
 	ctx.Data(status, contentType, body)
 }
 
@@ -294,30 +309,11 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context) {
 // hundreds of megabytes. With filters, the channels left out are taken out
 // on the way.
 func (c *Config) xtreamXMLTV(ctx *gin.Context) {
-	var kept map[string]bool
+	var channels func() (map[string]bool, error)
 	if c.rules.Active() {
-		var err error
-		if kept, err = c.guideChannels(ctx); err != nil {
-			c.upstreamError(ctx, err)
-			return
-		}
+		channels = func() (map[string]bool, error) { return c.guideChannels(ctx) }
 	}
-
-	resp, err := c.upstream(ctx, c.apiClient, c.providerAccount().APIURL("xmltv.php", ctx.Request.Form), false)
-	if err != nil {
-		c.upstreamError(ctx, err)
-		return
-	}
-	defer resp.Body.Close() // nolint: errcheck
-
-	if resp.Header.Get("Content-Type") == "" {
-		resp.Header.Set("Content-Type", "application/xml")
-	}
-	if kept != nil {
-		c.passOnGuide(ctx, resp, kept)
-		return
-	}
-	c.passOn(ctx, resp)
+	c.guide(ctx, c.providerAccount().APIURL("xmltv.php", ctx.Request.Form), channels)
 }
 
 // xtreamProviderStream serves "<prefix><user>/<password>/<rest>" of the
