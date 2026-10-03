@@ -69,7 +69,13 @@ func (c *Config) cachedPlaylist(key string, u *proxyUser, build func() (*m3u.Pla
 
 // providerGet asks the provider's API and returns its whole answer.
 func (c *Config) providerGet(ctx *gin.Context, endpoint string, params url.Values) (int, http.Header, []byte, error) {
-	resp, err := c.upstream(ctx, c.apiClient, c.accountOf(ctx).APIURL(endpoint, params), false)
+	return c.accountGet(ctx, c.accountOf(ctx), endpoint, params)
+}
+
+// accountGet asks the API of a provider account and returns its whole
+// answer.
+func (c *Config) accountGet(ctx *gin.Context, account xtream.Account, endpoint string, params url.Values) (int, http.Header, []byte, error) {
+	resp, err := c.upstream(ctx, c.apiClient, account.APIURL(endpoint, params))
 	if err != nil {
 		return 0, nil, nil, err
 	}
@@ -84,6 +90,13 @@ func (c *Config) providerGet(ctx *gin.Context, endpoint string, params url.Value
 
 // providerList asks the provider's API for a list (categories, streams).
 func (c *Config) providerList(ctx *gin.Context, action string) ([]map[string]any, error) {
+	if c.merged() {
+		_, _, body, _, err := c.mergedAPI(ctx, url.Values{"action": {action}})
+		if err != nil {
+			return nil, err
+		}
+		return xtream.DecodeList(body)
+	}
 	status, _, body, err := c.providerGet(ctx, "player_api.php", url.Values{"action": {action}})
 	if err != nil {
 		return nil, err
@@ -261,10 +274,23 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context) {
 	u := userOf(ctx)
 
 	key := userAnswerKey(u, "player_api.php", params)
-	status, header, body, err := c.providerGet(ctx, "player_api.php", params)
+	var status int
+	var header http.Header
+	var body []byte
+	var err error
+	partial := false
+	if c.merged() {
+		status, header, body, partial, err = c.mergedAPI(ctx, params)
+	} else {
+		status, header, body, err = c.providerGet(ctx, "player_api.php", params)
+	}
 	// A maintenance page or a cut list is no answer either.
 	invalid := err == nil && status == http.StatusOK && !json.Valid(body)
-	if (invalid || providerFailed(status, err)) && c.lastGood.serve(ctx, key, failure(status, err, invalid)) {
+	why := failure(status, err, invalid)
+	if partial && err == nil {
+		why = "a source did not answer"
+	}
+	if (invalid || partial || providerFailed(status, err)) && c.lastGood.serve(ctx, key, why) {
 		return
 	}
 	if err != nil {
@@ -307,7 +333,7 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context) {
 	if contentType == "" {
 		contentType = "application/json"
 	}
-	if status == http.StatusOK && !invalid {
+	if status == http.StatusOK && !invalid && !partial {
 		c.lastGood.keep(key, contentType, body)
 	}
 	ctx.Data(status, contentType, body)
@@ -325,13 +351,17 @@ func (c *Config) xtreamXMLTV(ctx *gin.Context) {
 			return keeping(kept), err
 		}
 	}
-	c.guide(ctx, u.provider.APIURL("xmltv.php", ctx.Request.Form), userAnswerKey(u, "guide", ctx.Request.Form), mapping)
+	c.guide(ctx, u.provider.APIURL("xmltv.php", ctx.Request.Form), userAnswerKey(u, "guide", ctx.Request.Form), mapping, c.otherGuides(ctx.Request.Form))
 }
 
 // xtreamProviderStream serves "<prefix><user>/<password>/<rest>" of the
 // provider. Live television is shared between its clients; a movie or an
 // episode is a file each client reads on its own.
 func (c *Config) xtreamProviderStream(ctx *gin.Context, prefix, rest string, live bool) {
+	if c.merged() {
+		c.sourceStream(ctx, prefix, rest, live)
+		return
+	}
 	rpURL, err := url.Parse(c.accountOf(ctx).StreamURL(prefix, rest))
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, errors.New("invalid stream address")) // nolint: errcheck
@@ -377,6 +407,10 @@ func (c *Config) xtreamStreamTimeshift(ctx *gin.Context) {
 		url.PathEscape(ctx.Param("start")),
 		url.PathEscape(ctx.Param("id")),
 	}, "/")
+	if c.merged() {
+		c.sourceStream(ctx, "timeshift/", rest, false)
+		return
+	}
 	rpURL, err := url.Parse(c.accountOf(ctx).StreamURL("timeshift/", rest))
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, errors.New("invalid stream address")) // nolint: errcheck

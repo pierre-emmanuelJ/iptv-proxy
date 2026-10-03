@@ -136,7 +136,7 @@ func (c *Config) passthroughUser(ctx *gin.Context, name, password string) (*prox
 // checkAccount asks the provider whether it accepts an account, and returns
 // how many streams at once the account allows (0 when it does not say).
 func (c *Config) checkAccount(ctx *gin.Context, account xtream.Account) (int, error) {
-	resp, err := c.upstream(ctx, c.apiClient, account.APIURL("player_api.php", nil), false)
+	resp, err := c.upstream(ctx, c.apiClient, account.APIURL("player_api.php", nil))
 	if err != nil {
 		return 0, err
 	}

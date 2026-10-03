@@ -35,14 +35,14 @@ func (c *Config) routes(r *gin.RouterGroup) {
 	// Xtream service endpoints
 	if c.XtreamBaseURL != "" {
 		c.xtreamRoutes(r)
-		if c.xtreamServesPlaylist() {
+		if c.xtreamServesPlaylist() && !c.merged() {
 			r.GET("/"+c.M3UFileName, c.authenticate, c.xtreamGetAuto)
 			// XXX Private need: for external Android app
 			r.POST("/"+c.M3UFileName, c.authenticate, c.xtreamGetAuto)
 
 			return
 		}
-		if c.RemoteURL == nil || c.RemoteURL.String() == "" {
+		if c.RemoteURL == nil || c.RemoteURL.String() == "" || c.merged() {
 			// An Xtream account and no playlist of its own: the playlist is
 			// the account's, under the usual name too.
 			r.GET("/"+c.M3UFileName, c.authenticate, c.xtreamPlaylist())
@@ -58,7 +58,8 @@ func (c *Config) routes(r *gin.RouterGroup) {
 // xtreamPlaylist serves the account's playlist: the provider's get.php, or
 // one generated from its API when asked so.
 func (c *Config) xtreamPlaylist() gin.HandlerFunc {
-	if c.XtreamGenerateApiGet {
+	// Several sources have one playlist: the merged catalogue's.
+	if c.XtreamGenerateApiGet || c.merged() {
 		return c.xtreamApiGet
 	}
 	return c.xtreamGet

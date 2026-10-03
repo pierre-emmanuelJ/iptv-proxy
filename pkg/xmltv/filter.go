@@ -65,6 +65,26 @@ func Filter(dst io.Writer, src io.Reader, keep func(channel string) bool) error 
 // renamed channel also gets its new id as its first display name: that is
 // how media servers match a guide to the channel numbers of a tuner.
 func Map(dst io.Writer, src io.Reader, ids func(channel string) []string) error {
+	return copyGuide(dst, src, ids, nil, false)
+}
+
+// Merge copies the guide from src as Map does, and writes what more writes
+// just before the guide's end tag: typically the channels of other guides,
+// given by Elements.
+func Merge(dst io.Writer, src io.Reader, ids func(channel string) []string, more func(w io.Writer) error) error {
+	return copyGuide(dst, src, ids, more, false)
+}
+
+// Elements writes the <channel> and <programme> elements of the guide from
+// src, as Map gives them their ids, one per line, and nothing else: the
+// guide's own head and end are left out.
+func Elements(dst io.Writer, src io.Reader, ids func(channel string) []string) error {
+	return copyGuide(dst, src, ids, nil, true)
+}
+
+// copyGuide copies a guide, or only its elements, with more written before
+// its end tag.
+func copyGuide(dst io.Writer, src io.Reader, ids func(channel string) []string, more func(w io.Writer) error, elementsOnly bool) error {
 	r := bufio.NewReaderSize(src, 64<<10)
 	w := bufio.NewWriterSize(dst, 64<<10)
 	// After an element left out, the blanks that followed it go too: the
@@ -76,6 +96,9 @@ func Map(dst io.Writer, src io.Reader, ids func(channel string) []string) error 
 		if skipBlank {
 			text = bytes.TrimLeft(text, " \t\r\n")
 			skipBlank = len(text) == 0
+		}
+		if elementsOnly {
+			text = nil // only elements are written
 		}
 		switch {
 		case errors.Is(err, bufio.ErrBufferFull):
@@ -92,12 +115,22 @@ func Map(dst io.Writer, src io.Reader, ids func(channel string) []string) error 
 			return err
 		}
 		skipBlank = false
-		if _, err := w.Write(text[:len(text)-1]); err != nil {
-			return err
+		if len(text) > 0 {
+			if _, err := w.Write(text[:len(text)-1]); err != nil {
+				return err
+			}
 		}
 
 		name := tagName(r)
+		if more != nil && isEndOfGuide(r) {
+			if err := more(w); err != nil {
+				return err
+			}
+			more = nil
+		}
 		switch {
+		case elementsOnly && opaque(r) != "":
+			err = readThrough(r, opaque(r), func(...byte) error { return nil })
 		case opaque(r) != "":
 			err = copyThrough(w, r, "<", opaque(r))
 		case elements[name] != nil:
@@ -114,8 +147,13 @@ func Map(dst io.Writer, src io.Reader, ids func(channel string) []string) error 
 						err = writeAs(w, element, startTag, name, id)
 					}
 				}
+				if elementsOnly && len(to) > 0 && err == nil {
+					err = w.WriteByte('\n')
+				}
 				skipBlank = len(to) == 0
 			}
+		case elementsOnly:
+			// a tag of the guide's own: left out with what follows it
 		default:
 			err = w.WriteByte('<')
 		}
@@ -171,6 +209,13 @@ func tagName(r *bufio.Reader) string {
 		}
 	}
 	return ""
+}
+
+// isEndOfGuide tells whether the reader, just after a "<", is at the
+// guide's end tag.
+func isEndOfGuide(r *bufio.Reader) bool {
+	ahead, _ := r.Peek(len("/tv") + 1)
+	return len(ahead) == len("/tv")+1 && string(ahead[:3]) == "/tv" && isTagEnd(ahead[3])
 }
 
 func isTagEnd(b byte) bool {

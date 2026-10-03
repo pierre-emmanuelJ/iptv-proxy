@@ -31,6 +31,8 @@ jobs:
         go test ./pkg/hls/ -run '^$' -fuzz FuzzRewrite -fuzztime 30s
         go test ./pkg/m3u/ -run '^$' -fuzz FuzzEditAttributes -fuzztime 30s
         go test ./pkg/xmltv/ -run '^$' -fuzz FuzzFilter -fuzztime 30s
+        go test ./pkg/xtream/ -run '^$' -fuzz FuzzRewriteValues -fuzztime 30s
+        go test ./pkg/xtream/ -run '^$' -fuzz FuzzMergeList -fuzztime 30s
     - name: Build
       run: go build ./...
   docker-build:

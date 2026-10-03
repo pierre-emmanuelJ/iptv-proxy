@@ -1,5 +1,18 @@
 # Changelog
 
+## 4.3.0
+
+### Added
+
+- **Several sources**, with failover. Accounts listed under `sources` in the
+  configuration file are served with the one of the Xtream options as one
+  catalogue: the first source keeps its ids, the others are shown in ranges
+  of their own (source n: n × 100000000 + id); categories of the same name
+  are one; a live channel several sources have (the same guide id) is shown
+  once and plays from the next source when it fails or when its source has
+  no connection left. Movies and series of every source are listed. The
+  guide adds the channels only the other sources have.
+
 ## 4.2.0
 
 ### Added

@@ -67,17 +67,27 @@ var fileExtensions = map[string]bool{
 // streamLive serves a live stream: every client watching it shares one
 // connection to the provider, opened again if the provider drops it.
 func (c *Config) streamLive(ctx *gin.Context, oriURL *url.URL) {
+	c.streamLiveFrom(ctx, oriURL.String(), func(streamCtx context.Context, header http.Header) (*http.Response, error) {
+		return c.upstreamDo(streamCtx, c.client, oriURL.String(), header)
+	})
+}
+
+// opener opens a stream at the provider, with the given request headers.
+type opener func(ctx context.Context, header http.Header) (*http.Response, error)
+
+// streamLiveFrom serves a live stream opened by open, shared under key.
+func (c *Config) streamLiveFrom(ctx *gin.Context, key string, open opener) {
 	// A range is a request for a part of a file: not live television.
 	if r := ctx.Request.Header.Get("Range"); c.NoStreamSharing || (r != "" && r != "bytes=0-") {
-		c.stream(ctx, oriURL)
+		c.streamFrom(ctx, open)
 		return
 	}
 
 	// The provider is asked with this client's headers; the stream then
 	// lives as long as anyone watches it, not as long as this request.
 	header := c.upstreamHeader(ctx, true)
-	sub, resp, err := c.hub.Join(oriURL.String(), func(streamCtx context.Context) (*http.Response, error) {
-		return c.upstreamDo(streamCtx, c.client, oriURL.String(), header)
+	sub, resp, err := c.hub.Join(key, func(streamCtx context.Context) (*http.Response, error) {
+		return open(streamCtx, header)
 	})
 	if err != nil {
 		c.upstreamError(ctx, err)
@@ -118,7 +128,15 @@ func (c *Config) streamLive(ctx *gin.Context, oriURL *url.URL) {
 // client stays. An HLS playlist is rewritten on the way, so that everything
 // it names is asked to the proxy.
 func (c *Config) stream(ctx *gin.Context, oriURL *url.URL) {
-	resp, err := c.upstream(ctx, c.client, oriURL.String(), true)
+	c.streamFrom(ctx, func(reqCtx context.Context, header http.Header) (*http.Response, error) {
+		return c.upstreamDo(reqCtx, c.client, oriURL.String(), header)
+	})
+}
+
+// streamFrom passes on to the client, for as long as it stays, what open
+// opens.
+func (c *Config) streamFrom(ctx *gin.Context, open opener) {
+	resp, err := open(ctx.Request.Context(), c.upstreamHeader(ctx, true))
 	if err != nil {
 		c.upstreamError(ctx, err)
 		return
@@ -239,7 +257,9 @@ func (c *Config) errorPage(ctx *gin.Context, status int, header http.Header, pag
 	if c.XtreamPassthrough {
 		replacement = xtream.Account{Password: c.HostConfig.Hostname} // the provider's host becomes the proxy's
 	}
-	page = xtream.Scrub(page, c.hiddenAccount(), replacement)
+	for _, hidden := range c.hiddenAccounts() {
+		page = xtream.Scrub(page, hidden, replacement)
+	}
 
 	header.Del("Content-Length") // the page changed
 	mergeHttpHeader(ctx.Writer.Header(), header)
@@ -251,7 +271,7 @@ func (c *Config) errorPage(ctx *gin.Context, status int, header http.Header, pag
 func (c *Config) dropLeakingHeaders(header http.Header) {
 	for name, values := range header {
 		for _, value := range values {
-			if xtream.Leaks(value, c.hiddenAccount()) {
+			if c.leaks(value) {
 				header.Del(name)
 				break
 			}
@@ -271,11 +291,11 @@ func (w flushWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// upstream sends a GET to the provider on behalf of the client: it is
-// cancelled when the client leaves. With forwardHeaders the client's headers
-// go along (Range, for seeking in a movie); otherwise only a User-Agent.
-func (c *Config) upstream(ctx *gin.Context, client *http.Client, rawURL string, forwardHeaders bool) (*http.Response, error) {
-	return c.upstreamDo(ctx.Request.Context(), client, rawURL, c.upstreamHeader(ctx, forwardHeaders))
+// upstream sends a GET to the provider's API on behalf of the client, with
+// only its User-Agent: it is cancelled when the client leaves. Streams go
+// along with the client's headers (see streamFrom).
+func (c *Config) upstream(ctx *gin.Context, client *http.Client, rawURL string) (*http.Response, error) {
+	return c.upstreamDo(ctx.Request.Context(), client, rawURL, c.upstreamHeader(ctx, false))
 }
 
 // upstreamHeader builds the headers of a request to the provider made for a

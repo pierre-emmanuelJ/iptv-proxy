@@ -53,6 +53,17 @@ type User struct {
 	Filter filter.Patterns
 }
 
+// Source is an Xtream provider account the proxy serves besides the one of
+// the Xtream options.
+type Source struct {
+	// Name names the source in logs.
+	Name                                      string
+	XtreamBaseURL, XtreamUser, XtreamPassword string
+	// MaxConnections is how many streams the proxy opens at once on the
+	// account; 0 asks the provider.
+	MaxConnections int
+}
+
 // ProxyConfig Contain original m3u playlist and HostConfiguration
 type ProxyConfig struct {
 	HostConfig           *HostConfiguration
@@ -105,4 +116,7 @@ type ProxyConfig struct {
 	// XtreamPassthrough lets each client log in with its own account of the
 	// Xtream provider, instead of the proxy's users and account.
 	XtreamPassthrough bool
+	// Sources are more Xtream accounts, served with the one of the Xtream
+	// options as one catalogue.
+	Sources []Source
 }
