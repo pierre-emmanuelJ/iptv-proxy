@@ -40,9 +40,11 @@ import (
 // it is not passed on.
 var errNotAPlaylist = errors.New("the provider did not answer with a playlist")
 
-// cachedPlaylist returns the playlist kept under key, building it again once
-// it is older than the configured expiration.
-func (c *Config) cachedPlaylist(key string, build func() (*m3u.Playlist, error)) ([]byte, error) {
+// cachedPlaylist returns the playlist of a user kept under key, building it
+// again once it is older than the configured expiration.
+func (c *Config) cachedPlaylist(key string, u *proxyUser, build func() (*m3u.Playlist, error)) ([]byte, error) {
+	// The playlist holds the user's credentials: each has their own.
+	key = u.name.String() + "\x00" + key
 	c.m3uCacheLock.Lock()
 	defer c.m3uCacheLock.Unlock()
 
@@ -59,7 +61,7 @@ func (c *Config) cachedPlaylist(key string, build func() (*m3u.Playlist, error))
 		}
 		return nil, err
 	}
-	_, body := c.proxify(playlist, true)
+	_, body := c.proxify(playlist, true, u)
 	c.m3uCache[key] = cachedM3U{body: body, at: time.Now()}
 
 	return body, nil
@@ -212,7 +214,7 @@ func (c *Config) xtreamServeGet(ctx *gin.Context, params url.Values) {
 	// provider address they build.
 	key := c.providerAccount().APIURL("get.php", params)
 
-	body, err := c.cachedPlaylist(key, func() (*m3u.Playlist, error) {
+	body, err := c.cachedPlaylist(key, userOf(ctx), func() (*m3u.Playlist, error) {
 		log.Printf("[iptv-proxy] %v | %s | xtream cache m3u file\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP())
 		status, _, answer, err := c.providerGet(ctx, "get.php", params)
 		if err != nil {
@@ -238,7 +240,7 @@ func (c *Config) xtreamServeGet(ctx *gin.Context, params url.Values) {
 func (c *Config) xtreamApiGet(ctx *gin.Context) {
 	extension := ctx.Query("output")
 
-	body, err := c.cachedPlaylist("apiget"+extension, func() (*m3u.Playlist, error) {
+	body, err := c.cachedPlaylist("apiget"+extension, userOf(ctx), func() (*m3u.Playlist, error) {
 		log.Printf("[iptv-proxy] %v | %s | xtream cache API m3u file\n", time.Now().Format("2006/01/02 - 15:04:05"), ctx.ClientIP())
 		return c.xtreamGenerateM3u(ctx, extension)
 	})
@@ -256,8 +258,9 @@ func (c *Config) xtreamApiGet(ctx *gin.Context) {
 func (c *Config) xtreamPlayerAPI(ctx *gin.Context) {
 	params := ctx.Request.Form
 	action := params.Get("action")
+	u := userOf(ctx)
 
-	key := answerKey("player_api.php", params)
+	key := userAnswerKey(u, "player_api.php", params)
 	status, header, body, err := c.providerGet(ctx, "player_api.php", params)
 	// A maintenance page or a cut list is no answer either.
 	invalid := err == nil && status == http.StatusOK && !json.Valid(body)
@@ -277,10 +280,12 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context) {
 			protocol = "https"
 		}
 		body, _ = xtream.RewriteLogin(body, xtream.ProxyInfo{
-			Account:  c.proxyAccount(),
-			Hostname: c.HostConfig.Hostname,
-			Port:     c.AdvertisedPort,
-			Protocol: protocol,
+			Account:           c.proxyAccount(u),
+			Hostname:          c.HostConfig.Hostname,
+			Port:              c.AdvertisedPort,
+			Protocol:          protocol,
+			MaxConnections:    u.max,
+			ActiveConnections: u.slots.count(),
 		})
 	}
 	c.dropLeakingHeaders(header)
@@ -289,7 +294,7 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context) {
 		c.errorPage(ctx, status, header, body)
 		return
 	}
-	body = xtream.Sanitize(body, c.providerAccount(), c.proxyAccount())
+	body = xtream.Sanitize(body, c.providerAccount(), c.proxyAccount(u))
 	if c.ProxyLogos {
 		body = xtream.RewriteValues(body, xtream.ImageFields, c.logoAddress)
 	}
@@ -312,14 +317,15 @@ func (c *Config) xtreamPlayerAPI(ctx *gin.Context) {
 // hundreds of megabytes. With filters, the channels left out are taken out
 // on the way.
 func (c *Config) xtreamXMLTV(ctx *gin.Context) {
+	u := userOf(ctx)
 	var mapping func() (channelMap, error)
-	if c.rules.Active() {
+	if u.rules.Active() {
 		mapping = func() (channelMap, error) {
-			kept, err := c.guideChannels(ctx)
+			kept, err := c.guideChannels(ctx, u.rules)
 			return keeping(kept), err
 		}
 	}
-	c.guide(ctx, c.providerAccount().APIURL("xmltv.php", ctx.Request.Form), answerKey("guide", ctx.Request.Form), mapping)
+	c.guide(ctx, c.providerAccount().APIURL("xmltv.php", ctx.Request.Form), userAnswerKey(u, "guide", ctx.Request.Form), mapping)
 }
 
 // xtreamProviderStream serves "<prefix><user>/<password>/<rest>" of the
@@ -341,10 +347,16 @@ func (c *Config) xtreamProviderStream(ctx *gin.Context, prefix, rest string, liv
 }
 
 func (c *Config) xtreamStreamHandler(ctx *gin.Context) {
+	if !c.allowLive(ctx, ctx.Param("id")) {
+		return
+	}
 	c.xtreamProviderStream(ctx, "", url.PathEscape(ctx.Param("id")), true)
 }
 
 func (c *Config) xtreamStreamLive(ctx *gin.Context) {
+	if !c.allowLive(ctx, ctx.Param("id")) {
+		return
+	}
 	c.xtreamProviderStream(ctx, "live/", url.PathEscape(ctx.Param("id")), true)
 }
 
@@ -357,6 +369,9 @@ func (c *Config) xtreamStreamSeries(ctx *gin.Context) {
 }
 
 func (c *Config) xtreamStreamTimeshift(ctx *gin.Context) {
+	if !c.allowLive(ctx, ctx.Param("id")) {
+		return
+	}
 	rest := strings.Join([]string{
 		url.PathEscape(ctx.Param("duration")),
 		url.PathEscape(ctx.Param("start")),

@@ -57,6 +57,9 @@ type provider struct {
 	down atomic.Bool
 	// garbage makes the API answer a page that is not JSON, with a 200.
 	garbage atomic.Bool
+	// late adds a news channel to the live streams, as a provider does now
+	// and then.
+	late atomic.Bool
 }
 
 func (p *provider) hit(r *http.Request) {
@@ -206,7 +209,11 @@ func newProvider(t *testing.T) *provider {
 		case "get_live_streams":
 			fmt.Fprint(w, `[{"num":1,"name":"One","stream_type":"live","stream_id":1,"stream_icon":"http:\/\/logos.example\/one.png","epg_channel_id":"one.fr","added":"1700000000","category_id":10,"tv_archive":0,"direct_source":""},`+
 				`{"num":"2","name":"Two","stream_id":"2","stream_icon":"","epg_channel_id":null,"category_id":"20"},`+
-				`{"num":3,"name":"Lost","stream_id":3,"category_id":"99"}]`)
+				`{"num":3,"name":"Lost","stream_id":3,"category_id":"99"}`)
+			if p.late.Load() {
+				fmt.Fprint(w, `,{"num":4,"name":"Late","stream_id":4,"category_id":"10"}`)
+			}
+			fmt.Fprint(w, `]`)
 		case "get_vod_categories":
 			fmt.Fprint(w, `[{"category_id":"30","category_name":"Films"}]`)
 		case "get_vod_streams":

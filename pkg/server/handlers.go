@@ -21,7 +21,6 @@ package server
 import (
 	"bufio"
 	"context"
-	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io"
@@ -231,7 +230,13 @@ func (c *Config) passOn(ctx *gin.Context, resp *http.Response) {
 
 // errorPage sends a provider's error answer without its credentials.
 func (c *Config) errorPage(ctx *gin.Context, status int, header http.Header, page []byte) {
-	page = xtream.Scrub(page, c.providerAccount(), c.proxyAccount())
+	// The provider's credentials become the user's, as everywhere else; a
+	// request with no user (an HLS segment) gets them masked.
+	replacement := xtream.Account{User: "***", Password: "***"}
+	if u, ok := ctx.Get(userKey); ok {
+		replacement = c.proxyAccount(u.(*proxyUser))
+	}
+	page = xtream.Scrub(page, c.providerAccount(), replacement)
 
 	header.Del("Content-Length") // the page changed
 	mergeHttpHeader(ctx.Writer.Header(), header)
@@ -351,27 +356,5 @@ func mergeHttpHeader(dst, src http.Header) {
 			}
 			dst.Add(k, v)
 		}
-	}
-}
-
-// authenticate checks the "username" and "password" of a request, given in
-// its query or in its form body.
-func (c *Config) authenticate(ctx *gin.Context) {
-	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, maxFormBytes)
-	if err := ctx.Request.ParseMultipartForm(maxFormBytes); err != nil && !errors.Is(err, http.ErrNotMultipart) {
-		ctx.AbortWithError(http.StatusBadRequest, err) // nolint: errcheck
-		return
-	}
-
-	username, password := ctx.Request.Form.Get("username"), ctx.Request.Form.Get("password")
-	if username == "" || password == "" {
-		ctx.AbortWithError(http.StatusBadRequest, errors.New("missing username or password")) // nolint: errcheck
-		return
-	}
-
-	userOK := subtle.ConstantTimeCompare([]byte(username), []byte(c.User.String())) == 1
-	passwordOK := subtle.ConstantTimeCompare([]byte(password), []byte(c.Password.String())) == 1
-	if !userOK || !passwordOK {
-		ctx.AbortWithStatus(http.StatusUnauthorized)
 	}
 }

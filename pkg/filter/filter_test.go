@@ -76,3 +76,27 @@ func TestOnlyChannelPatterns(t *testing.T) {
 		t.Error("an exclusion alone keeps everything else")
 	}
 }
+
+func TestCombine(t *testing.T) {
+	all, _ := New(Patterns{GroupExclude: "(?i)adult"})
+	kids, _ := New(Patterns{Group: "(?i)kids"})
+	r := Combine(all, nil, kids)
+	for _, c := range []struct {
+		group string
+		want  bool
+	}{{"Kids", true}, {"Kids adult", false}, {"News", false}} {
+		if got := r.Keep(c.group, "x"); got != c.want {
+			t.Errorf("Keep(%q) = %v, want %v", c.group, got, c.want)
+		}
+	}
+	if Combine(nil, nil) != nil || Combine() != nil {
+		t.Error("nothing to combine keeps everything")
+	}
+	if Combine(all).String() != all.String() || Combine(all, kids).String() == all.String() {
+		t.Error("descriptions")
+	}
+	same, _ := New(Patterns{GroupExclude: "(?i)adult"})
+	if same.String() != all.String() || (*Rules)(nil).String() != "" {
+		t.Error("the same patterns, the same description")
+	}
+}

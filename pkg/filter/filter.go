@@ -23,6 +23,7 @@ package filter
 import (
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 // Patterns are the regular expressions a channel is checked against. An
@@ -35,10 +36,11 @@ type Patterns struct {
 	GroupExclude, ChannelExclude string
 }
 
-// Rules are compiled Patterns. A nil *Rules keeps everything.
+// Rules are compiled Patterns, possibly several sets of them: a channel is
+// kept when every set keeps it. A nil *Rules keeps everything.
 type Rules struct {
-	group, channel               *regexp.Regexp
-	groupExclude, channelExclude *regexp.Regexp
+	group, channel               []*regexp.Regexp
+	groupExclude, channelExclude []*regexp.Regexp
 }
 
 // New compiles the patterns. It returns nil when there is nothing to filter,
@@ -48,7 +50,7 @@ func New(p Patterns) (*Rules, error) {
 	for _, f := range []struct {
 		option  string
 		pattern string
-		into    **regexp.Regexp
+		into    *[]*regexp.Regexp
 	}{
 		{"group-regex", p.Group, &r.group},
 		{"channel-regex", p.Channel, &r.channel},
@@ -62,12 +64,52 @@ func New(p Patterns) (*Rules, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid --%s: %w", f.option, err)
 		}
-		*f.into = re
+		*f.into = append(*f.into, re)
 	}
-	if r.group == nil && r.channel == nil && r.groupExclude == nil && r.channelExclude == nil {
+	if r.empty() {
 		return nil, nil
 	}
 	return r, nil
+}
+
+// Combine returns the rules that keep a channel when all of rules keep it.
+func Combine(rules ...*Rules) *Rules {
+	all := &Rules{}
+	for _, r := range rules {
+		if r == nil {
+			continue
+		}
+		all.group = append(all.group, r.group...)
+		all.channel = append(all.channel, r.channel...)
+		all.groupExclude = append(all.groupExclude, r.groupExclude...)
+		all.channelExclude = append(all.channelExclude, r.channelExclude...)
+	}
+	if all.empty() {
+		return nil
+	}
+	return all
+}
+
+func (r *Rules) empty() bool {
+	return len(r.group)+len(r.channel)+len(r.groupExclude)+len(r.channelExclude) == 0
+}
+
+// String describes the rules: two rules with the same description keep the
+// same channels.
+func (r *Rules) String() string {
+	if r == nil {
+		return ""
+	}
+	var b strings.Builder
+	for _, set := range []struct {
+		name string
+		res  []*regexp.Regexp
+	}{{"g", r.group}, {"c", r.channel}, {"G", r.groupExclude}, {"C", r.channelExclude}} {
+		for _, re := range set.res {
+			fmt.Fprintf(&b, "%s%q", set.name, re.String())
+		}
+	}
+	return b.String()
 }
 
 // Active tells whether anything is filtered.
@@ -77,7 +119,7 @@ func (r *Rules) Active() bool {
 
 // FiltersGroups tells whether a channel's group matters.
 func (r *Rules) FiltersGroups() bool {
-	return r != nil && (r.group != nil || r.groupExclude != nil)
+	return r != nil && len(r.group)+len(r.groupExclude) > 0
 }
 
 // Group tells whether channels of this group are kept, whatever their name.
@@ -96,9 +138,16 @@ func (r *Rules) Keep(group, channel string) bool {
 	return keep(r.group, r.groupExclude, group) && keep(r.channel, r.channelExclude, channel)
 }
 
-func keep(include, exclude *regexp.Regexp, s string) bool {
-	if include != nil && !include.MatchString(s) {
-		return false
+func keep(include, exclude []*regexp.Regexp, s string) bool {
+	for _, re := range include {
+		if !re.MatchString(s) {
+			return false
+		}
 	}
-	return exclude == nil || !exclude.MatchString(s)
+	for _, re := range exclude {
+		if re.MatchString(s) {
+			return false
+		}
+	}
+	return true
 }

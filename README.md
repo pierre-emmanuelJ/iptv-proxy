@@ -96,8 +96,8 @@ Guide:    http://192.168.1.10:8080/xmltv.php?username=family&password=choose-a-p
 | Docker Hub | `pierro777/iptv-proxy` |
 | GitHub | `ghcr.io/pierre-emmanuelj/iptv-proxy` |
 
-Tags: `latest`, and for a given version `v3.12.0`, `v3.12` or `v3`. Since
-v3.12.0 they work on amd64 and on ARM (Raspberry Pi, Apple silicon): Docker
+Tags: `latest`, and for a given version `v4.0.0`, `v4.0` or `v4` (`v3` for the
+3.x versions). Since v3.12.0 they work on amd64 and on ARM (Raspberry Pi, Apple silicon): Docker
 pulls the image of your machine. The `-amd64` and `-arm64` tags
 (`pierro777/iptv-proxy:latest-arm64`) name one architecture, as before.
 
@@ -176,6 +176,7 @@ wins over the variable, and the variable over the file.
 | `--https` | `HTTPS` | `false` | Write `https://` instead of `http://` in the addresses the proxy gives out. The proxy itself always listens in plain HTTP: put a reverse proxy in front for TLS. |
 | `--user` | `PROXY_USER` (or `USER`) | `usertest` | User your players log in with. |
 | `--password` | `PROXY_PASSWORD` (or `PASSWORD`) | `passwordtest` | Password your players log in with. |
+| `--max-connections` | `MAX_CONNECTIONS` | `0` (no limit) | Streams that user may watch at once. See [Several users](#several-users). |
 | `--m3u-file-name` | `M3U_FILE_NAME` | `iptv.m3u` | Name of the playlist the proxy serves: `http://host:port/iptv.m3u`. |
 | `--custom-endpoint` | `CUSTOM_ENDPOINT` | | Prefix put before every path: `http://host:port/<custom-endpoint>/iptv.m3u`. |
 | `--custom-id` | `CUSTOM_ID` | derived from your settings | First path element of M3U track addresses. The same settings give the same addresses, restart after restart. |
@@ -192,7 +193,7 @@ wins over the variable, and the variable over the file.
 | `--channel-regex` | `CHANNEL_REGEX` | | Keep only the live channels whose name matches this regular expression. |
 | `--group-exclude-regex` | `GROUP_EXCLUDE_REGEX` | | Leave out the live channels whose group matches this regular expression. |
 | `--channel-exclude-regex` | `CHANNEL_EXCLUDE_REGEX` | | Leave out the live channels whose name matches this regular expression. |
-| `--iptv-proxy-config` | | `.iptv-proxy.yaml` in the home or current directory | YAML file holding the same options, named as the flags (`m3u-url: ...`). |
+| `--iptv-proxy-config` | `IPTV_PROXY_CONFIG` | `.iptv-proxy.yaml` in the home or current directory | YAML file holding the same options, named as the flags (`m3u-url: ...`), and the [users](#several-users). |
 
 Good to know:
 
@@ -314,6 +315,60 @@ through the proxy, on any host and after any redirect. The token is the
 provider's address, encrypted: a player never sees the provider's host,
 credentials or session tokens. Nothing is stored, and tokens stay valid across
 restarts.
+
+## Several users
+
+One user and password is all most homes need, and the options above give
+exactly that. To give each person or device their own login, list the users
+in the configuration file (`--iptv-proxy-config`, or `IPTV_PROXY_CONFIG` in
+Docker):
+
+```yaml
+# /config/iptv-proxy.yaml
+users:
+  - name: family
+    password: choose-a-password
+    max-connections: 2
+  - name: kids
+    password: another-password
+    max-connections: 1
+    group-regex: "(?i)kids|cartoon"
+  - name: grandma
+    password: a-third-one
+    group-regex: "^FR "
+    channel-exclude-regex: "(?i)adult"
+```
+
+```sh
+docker run -d --name iptv-proxy -p 8080:8080 \
+  -v "$PWD/iptv-proxy.yaml:/config/iptv-proxy.yaml:ro" \
+  -e IPTV_PROXY_CONFIG=/config/iptv-proxy.yaml \
+  -e XTREAM_BASE_URL="http://provider.example:8080" \
+  -e XTREAM_USER=xtream_user \
+  -e XTREAM_PASSWORD=xtream_password \
+  -e PROXY_HOSTNAME=192.168.1.10 \
+  pierro777/iptv-proxy:latest
+```
+
+- When `users` is there, those users replace `--user` and `--password`.
+  The other options (provider, address, filters) stay where they are: flags,
+  variables or the same file.
+- **Each user logs in with their own name and password**, and their playlists
+  and stream addresses hold their own credentials.
+- **`max-connections`** is how many streams the user watches at once (none
+  means no limit). At the limit, a new stream from the same device (the same
+  address) replaces that device's oldest one: zapping keeps working. A stream
+  from another device is refused until one stops. The login answer gives
+  players the user's limit and the streams they watch. HLS segments are not
+  counted: a live HLS channel is many short requests.
+- **Filters** (`group-regex`, `channel-regex`, `group-exclude-regex`,
+  `channel-exclude-regex`) apply to that user on top of the proxy's own. For
+  a user, they are more than what is shown: a live channel left out does not
+  play, even asked by its id. Movies and series are not filtered.
+- Names must not be `hls`, `logo`, `live`, `movie`, `series`, `timeshift` or
+  `play`: they are the first elements of the proxy's own addresses.
+- `--max-connections` (`MAX_CONNECTIONS`) sets the limit of the one user of
+  `--user` and `--password`, without a file.
 
 ## Plex and other media servers
 
@@ -465,14 +520,15 @@ docker compose up -d
   mapping. Players get what the provider sends.
 - It does not transcode, record or cache streams: they are passed on as they
   come.
-- It has one provider and one user and password, shared by all your players.
+- It has one provider.
 - It has no web interface.
 
 ## Roadmap
 
 Planned, not available yet:
 
-- Several users, each with their own credentials and limits.
+- Clients logging in with their own provider credentials, the proxy only
+  hiding the provider's address.
 - Several providers behind one proxy, with failover.
 
 See the [changelog](CHANGELOG.md) for what each release brought.

@@ -64,16 +64,15 @@ func TestAPIStreamsFilteredByName(t *testing.T) {
 }
 
 func TestAPIStreamsInSeveralCategories(t *testing.T) {
-	c := &Config{}
-	var err error
-	if c.rules, err = filter.New(filter.Patterns{Group: "^Kids$"}); err != nil {
+	rules, err := filter.New(filter.Patterns{Group: "^Kids$"})
+	if err != nil {
 		t.Fatal(err)
 	}
 	groups := map[string]string{"1": "News", "2": "Kids"}
-	if !c.keepStream(map[string]any{"name": "x", "category_id": "1", "category_ids": []any{"1", "2"}}, groups) {
+	if !keepStream(map[string]any{"name": "x", "category_id": "1", "category_ids": []any{"1", "2"}}, groups, rules) {
 		t.Error("a stream is kept when one of its categories is")
 	}
-	if c.keepStream(map[string]any{"name": "x", "category_id": "1", "category_ids": []any{"1"}}, groups) {
+	if keepStream(map[string]any{"name": "x", "category_id": "1", "category_ids": []any{"1"}}, groups, rules) {
 		t.Error("a stream none of whose categories is kept is left out")
 	}
 }

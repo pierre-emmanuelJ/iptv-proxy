@@ -43,6 +43,16 @@ type HostConfiguration struct {
 	Port     int
 }
 
+// User is one of the users of the configuration file.
+type User struct {
+	Name, Password string
+	// MaxConnections is how many streams the user may watch at once; 0 is
+	// no limit.
+	MaxConnections int
+	// Filter keeps the channels the user sees, after the proxy's filters.
+	Filter filter.Patterns
+}
+
 // ProxyConfig Contain original m3u playlist and HostConfiguration
 type ProxyConfig struct {
 	HostConfig           *HostConfiguration
@@ -84,4 +94,10 @@ type ProxyConfig struct {
 	// number of tuners it announces; 0 asks the provider.
 	HDHomeRunPort   int
 	HDHomeRunTuners int
+	// Users, when given, are the users of the proxy instead of the one of
+	// User and Password.
+	Users []User
+	// MaxConnections is the limit of streams at once of the one user of User
+	// and Password; 0 is no limit.
+	MaxConnections int
 }

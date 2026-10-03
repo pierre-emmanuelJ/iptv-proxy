@@ -172,6 +172,9 @@ type ProxyInfo struct {
 	Hostname string
 	Port     int
 	Protocol string // "http" or "https"
+	// MaxConnections, when set, is the user's limit of streams at once, and
+	// ActiveConnections the streams they watch: they replace the account's.
+	MaxConnections, ActiveConnections int
 }
 
 // RewriteLogin turns the provider's login answer into the proxy's: same
@@ -189,19 +192,18 @@ func RewriteLogin(body []byte, info ProxyInfo) (out []byte, ok bool) {
 	if user, isObject := answer["user_info"].(map[string]any); isObject {
 		user["username"] = info.Account.User
 		user["password"] = info.Account.Password
+		if info.MaxConnections > 0 {
+			user["max_connections"] = sameType(user["max_connections"], info.MaxConnections)
+			user["active_cons"] = sameType(user["active_cons"], info.ActiveConnections)
+		}
 	}
 	if server, isObject := answer["server_info"].(map[string]any); isObject {
 		server["url"] = info.Protocol + "://" + info.Hostname
 		server["server_protocol"] = info.Protocol
 		// A port is written the way the provider wrote it, string or
 		// number: that is what the provider's clients are known to read.
-		port := json.Number(strconv.Itoa(info.Port))
 		for _, field := range []string{"port", "https_port", "rtmp_port"} {
-			if _, isNumber := server[field].(json.Number); isNumber {
-				server[field] = port
-			} else {
-				server[field] = port.String()
-			}
+			server[field] = sameType(server[field], info.Port)
 		}
 	}
 
@@ -212,6 +214,15 @@ func RewriteLogin(body []byte, info ProxyInfo) (out []byte, ok bool) {
 		return body, false
 	}
 	return bytes.TrimRight(buf.Bytes(), "\n"), true
+}
+
+// sameType writes n the way the provider wrote the value it replaces: a
+// number or a string. That is what the provider's clients are known to read.
+func sameType(was any, n int) any {
+	if _, isNumber := was.(json.Number); isNumber {
+		return json.Number(strconv.Itoa(n))
+	}
+	return strconv.Itoa(n)
 }
 
 // Text reads a JSON value that providers write either as a string or as a

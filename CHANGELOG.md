@@ -1,5 +1,30 @@
 # Changelog
 
+## 4.0.0
+
+### Added
+
+- **Several users.** A `users` list in the configuration file gives each
+  person or device their own name and password, instead of the one of
+  `--user` and `--password`. Their playlists, stream addresses and kept
+  answers are their own. `IPTV_PROXY_CONFIG` names the configuration file,
+  for Docker. (#72, #163)
+- **A limit of streams at once per user** (`max-connections`, or
+  `--max-connections` for the one user of the flags). At the limit, a new
+  stream from the same address replaces that address's oldest one, so
+  zapping keeps working; another address is refused (403). The login answer
+  gives the user's limit and active streams.
+- **Filters per user**, on top of the proxy's own. For a user with filters,
+  a live channel left out does not play either, even asked by its id.
+
+### Changed
+
+- The major version: Docker images are now tagged `v4`. Nothing changes for
+  a proxy with one user: the same options give the same addresses.
+- Provider error pages name the user's credentials in place of the
+  provider's, as before; a request with no user (an HLS segment) gets them
+  masked.
+
 ## 3.14.0
 
 ### Added
