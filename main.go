@@ -20,6 +20,9 @@ package main
 
 import "github.com/pierre-emmanuelJ/iptv-proxy/cmd"
 
+// version is set by the release build.
+var version = "dev"
+
 func main() {
-	cmd.Execute()
+	cmd.Execute(version)
 }

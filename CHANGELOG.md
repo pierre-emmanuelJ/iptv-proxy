@@ -1,5 +1,21 @@
 # Changelog
 
+## 4.4.0
+
+### Added
+
+- **A read-only status page** at `/status` (and `/status.json`), with
+  `--status-password` (`STATUS_PASSWORD`). It shows:
+  - the streams being watched, by whom, from where and for how long;
+  - the users and their limits;
+  - the live streams open at the provider;
+  - the sources and their streams;
+  - the HDHomeRun tuner;
+  - the kept answers.
+
+  It shows no credentials.
+- `iptv-proxy --version`.
+
 ## 4.3.0
 
 ### Added

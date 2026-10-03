@@ -158,12 +158,14 @@ type slot struct {
 	ip     string
 	stop   context.CancelFunc
 	opened time.Time
+	// what is the stream's address, without credentials.
+	what string
 }
 
 // acquire takes a place for a new stream from ip. At the limit, the oldest
 // stream of the same address gives its place (a player switching channels);
 // a stream from another address is refused.
-func (s *slots) acquire(limit int, ip string, stop context.CancelFunc) (*slot, bool) {
+func (s *slots) acquire(limit int, ip string, stop context.CancelFunc, what string) (*slot, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -178,7 +180,7 @@ func (s *slots) acquire(limit int, ip string, stop context.CancelFunc) (*slot, b
 		s.open[i].stop()
 		s.open = append(s.open[:i], s.open[i+1:]...)
 	}
-	sl := &slot{ip: ip, stop: stop, opened: time.Now()}
+	sl := &slot{ip: ip, stop: stop, opened: time.Now(), what: what}
 	s.open = append(s.open, sl)
 	return sl, true
 }
@@ -207,7 +209,7 @@ func (c *Config) limit(ctx *gin.Context) {
 	u := userOf(ctx)
 	streamCtx, stop := context.WithCancel(ctx.Request.Context())
 	defer stop()
-	sl, ok := u.slots.acquire(u.max, ctx.ClientIP(), stop)
+	sl, ok := u.slots.acquire(u.max, ctx.ClientIP(), stop, c.maskCredentials(ctx.Request.URL.Path))
 	if !ok {
 		ctx.AbortWithError(http.StatusForbidden, fmt.Errorf("user %q: %d streams at once already", u.name, u.max)) // nolint: errcheck
 		return

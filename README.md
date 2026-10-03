@@ -187,6 +187,7 @@ wins over the variable, and the variable over the file.
 | `--xtream-api-get-movies` | `XTREAM_API_GET_MOVIES` | `false` | Add the provider's movies to that generated playlist. Off by default: a catalogue of tens of thousands of movies makes a playlist some players cannot load. Series are not added (see below). |
 | `--user-agent` | `USER_AGENT` | | User-Agent sent to the provider instead of the player's. Some providers only answer known players. |
 | `--no-stream-sharing` | `NO_STREAM_SHARING` | `false` | Open one provider connection per player for a live stream, instead of sharing one between the players watching it. |
+| `--status-password` | `STATUS_PASSWORD` | | Password of a read-only status page at `/status`. See [Status page](#status-page). |
 | `--proxy-logos` | `PROXY_LOGOS` | `false` | Serve the logos and covers of playlists and of the Xtream API through the proxy too, so that players reach no other host. |
 | `--hdhomerun-port` | `HDHOMERUN_PORT` | | Port of an HDHomeRun tuner for Plex, Emby, Jellyfin or Channels DVR. Local network only. See [Plex and other media servers](#plex-and-other-media-servers). |
 | `--hdhomerun-group-regex`, `--hdhomerun-channel-regex`, `--hdhomerun-group-exclude-regex`, `--hdhomerun-channel-exclude-regex` | `HDHOMERUN_GROUP_REGEX`... | | Filters of the tuner alone, applied after the proxy's: the media server gets fewer channels than your players. |
@@ -492,6 +493,26 @@ When Plex asks for the guide, choose the XMLTV option and give
 - Plex finds a tuner by its address, entered by hand: automatic discovery on
   the network is not supported.
 
+## Status page
+
+With `--status-password` (`STATUS_PASSWORD`), the proxy serves a read-only
+page at `http://host:port/status`. It asks for that password; any user name
+does.
+
+It shows:
+- the streams being watched: by whom, from which address, for how long;
+- the users and their limits;
+- how many live streams are open at the provider, shared between their
+  viewers;
+- the sources and the streams each holds, when there are several;
+- the HDHomeRun tuner's channels;
+- the answers kept for when the provider fails.
+
+The page refreshes itself every 10 seconds; `/status.json` gives the same
+in JSON. It changes nothing, and shows no password: stream addresses are
+masked, sources are named by their host. `iptv-proxy --version` prints the
+version.
+
 ## When the provider fails
 
 Providers fail now and then: an error for a minute, a maintenance page, a
@@ -598,13 +619,13 @@ docker compose up -d
   mapping. Players get what the provider sends.
 - It does not transcode, record or cache streams: they are passed on as they
   come.
-- It has no web interface.
+- It has no web interface to change anything: the status page only shows.
 
 ## Roadmap
 
 Planned, not available yet:
 
-- Optional ffmpeg profiles, and a read-only status page.
+- Optional ffmpeg profiles.
 
 See the [changelog](CHANGELOG.md) for what each release brought.
 

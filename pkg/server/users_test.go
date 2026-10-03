@@ -219,17 +219,17 @@ func TestSlots(t *testing.T) {
 	stopped := map[string]bool{}
 	stop := func(name string) context.CancelFunc { return func() { stopped[name] = true } }
 
-	a, ok := s.acquire(2, "tv", stop("a"))
+	a, ok := s.acquire(2, "tv", stop("a"), "")
 	if !ok {
 		t.Fatal("a")
 	}
-	if _, ok := s.acquire(2, "phone", stop("b")); !ok {
+	if _, ok := s.acquire(2, "phone", stop("b"), ""); !ok {
 		t.Fatal("b")
 	}
-	if _, ok := s.acquire(2, "laptop", stop("c")); ok || s.count() != 2 {
+	if _, ok := s.acquire(2, "laptop", stop("c"), ""); ok || s.count() != 2 {
 		t.Error("a third address at the limit is refused")
 	}
-	if _, ok := s.acquire(2, "tv", stop("d")); !ok || !stopped["a"] || stopped["b"] || s.count() != 2 {
+	if _, ok := s.acquire(2, "tv", stop("d"), ""); !ok || !stopped["a"] || stopped["b"] || s.count() != 2 {
 		t.Errorf("the tv's oldest stream gives its place: %v, %d", stopped, s.count())
 	}
 	s.release(a) // already given away: nothing happens
@@ -237,7 +237,7 @@ func TestSlots(t *testing.T) {
 		t.Errorf("count = %d", s.count())
 	}
 	for range 5 {
-		if _, ok := s.acquire(0, "any", stop("x")); !ok {
+		if _, ok := s.acquire(0, "any", stop("x"), ""); !ok {
 			t.Error("no limit")
 		}
 	}
