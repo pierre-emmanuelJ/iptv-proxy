@@ -164,6 +164,11 @@ func newProvider(t *testing.T) *provider {
 		p.hit(r)
 		fmt.Fprint(w, "#EXTM3U\n#EXTINF:6,\nen_1.aac\n")
 	})
+	cdn.HandleFunc("/img/", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		w.Header().Set("Content-Type", "image/jpeg")
+		fmt.Fprint(w, "jpeg:"+path.Base(r.URL.Path))
+	})
 	p.cdn = httptest.NewServer(cdn)
 	t.Cleanup(p.cdn.Close)
 
@@ -214,6 +219,10 @@ func newProvider(t *testing.T) *provider {
 		case "get_short_epg":
 			// titles that are not valid base64 must not be an error
 			fmt.Fprint(w, `{"epg_listings":[{"id":"1","title":"not base64 !!","start":"2025-10-02 20:00:00","start_timestamp":"1759428000","now_playing":0}]}`)
+		case "get_series_info":
+			// images on another host, one in a list
+			cdn := strings.ReplaceAll(p.cdn.URL, "/", `\/`)
+			fmt.Fprintf(w, `{"info":{"name":"Show","cover":"%[1]s\/img\/cover.jpg","backdrop_path":["%[1]s\/img\/back.jpg"]},"episodes":{}}`, cdn)
 		case "get_series":
 			fmt.Fprint(w, `{"1":{"series_id":7,"name":"Show"}}`) // an object instead of an array
 		case "echo":
@@ -425,6 +434,12 @@ func newProvider(t *testing.T) *provider {
 	mux.HandleFunc("/hls/b_1.ts", func(w http.ResponseWriter, r *http.Request) {
 		p.hit(r)
 		fmt.Fprint(w, "segment-b-1")
+	})
+
+	// anything else is counted too, and not found
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		http.NotFound(w, r)
 	})
 
 	p.Server = httptest.NewServer(mux)

@@ -29,6 +29,8 @@ func (c *Config) routes(r *gin.RouterGroup) {
 
 	// What HLS playlists name, whatever the provider (see hlsAddress).
 	r.GET("/hls/:token/:name", c.hlsStream)
+	// Logos and covers, with --proxy-logos (see logoAddress).
+	r.GET("/logo/:token/:name", c.proxyLogo)
 
 	// Xtream service endpoints
 	if c.XtreamBaseURL != "" {

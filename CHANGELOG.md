@@ -1,5 +1,24 @@
 # Changelog
 
+## 3.14.0
+
+### Added
+
+- **An HDHomeRun tuner for Plex, Emby, Jellyfin and Channels DVR.**
+  `--hdhomerun-port` (`HDHOMERUN_PORT`) serves the live channels the filters
+  keep as a network TV tuner, on a port of its own meant for the local
+  network: `discover.json`, `lineup.json`, the channels at `/auto/v<number>`
+  (shared with the proxy's other clients), and `/guide.xml`, the guide with
+  each channel under its tuner number so that media servers match it. Its
+  answers hold no credentials. It announces as many tuners as the Xtream
+  account allows connections, or `--hdhomerun-tuners`. Channel numbers are
+  the provider's stream ids (Xtream) or `tvg-chno` (M3U).
+- `--proxy-logos` (`PROXY_LOGOS`): the logos and covers of playlists and of
+  the Xtream API are served through the proxy, like the streams, so that
+  players reach no other host (behind a VPN, for instance). Only the image
+  fields of the API answers change; everything else is passed on as it was.
+  (#120)
+
 ## 3.13.0
 
 ### Added

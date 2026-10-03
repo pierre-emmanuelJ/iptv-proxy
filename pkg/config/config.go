@@ -76,4 +76,12 @@ type ProxyConfig struct {
 	// XMLTVURL is the guide of an M3U playlist, when its header does not
 	// name one or names another.
 	XMLTVURL string
+	// ProxyLogos serves the logos and covers of playlists and of the Xtream
+	// API through the proxy, like the streams.
+	ProxyLogos bool
+	// HDHomeRunPort, when set, is the port of an HDHomeRun tuner serving the
+	// live channels to media servers (Plex...). HDHomeRunTuners is the
+	// number of tuners it announces; 0 asks the provider.
+	HDHomeRunPort   int
+	HDHomeRunTuners int
 }

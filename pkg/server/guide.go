@@ -32,17 +32,28 @@ import (
 	"github.com/pierre-emmanuelJ/iptv-proxy/pkg/xmltv"
 )
 
-// guide sends a guide (XMLTV) as it comes from address: it can weigh
-// hundreds of megabytes. When channels is given, only the channels it
-// returns are kept, with their programmes. A guide sent in full is kept,
-// compressed, for when the provider fails.
-func (c *Config) guide(ctx *gin.Context, address string, channels func() (map[string]bool, error)) {
-	key := answerKey("guide", ctx.Request.Form)
+// channelMap gives the ids a guide channel is sent under (see xmltv.Map).
+type channelMap func(channel string) []string
 
-	var kept map[string]bool
-	if channels != nil {
+// keeping is the channelMap of a set of channels kept as they are.
+func keeping(kept map[string]bool) channelMap {
+	return func(channel string) []string {
+		if kept[channel] {
+			return []string{channel}
+		}
+		return nil
+	}
+}
+
+// guide sends a guide (XMLTV) as it comes from address: it can weigh
+// hundreds of megabytes. When mapping is given, the channels are sent as the
+// map it returns says, with their programmes. A guide sent in full is kept
+// under key, compressed, for when the provider fails.
+func (c *Config) guide(ctx *gin.Context, address, key string, mapping func() (channelMap, error)) {
+	var channels channelMap
+	if mapping != nil {
 		var err error
-		if kept, err = channels(); err != nil {
+		if channels, err = mapping(); err != nil {
 			if !c.lastGood.serve(ctx, key, err.Error()) {
 				c.upstreamError(ctx, err)
 			}
@@ -77,7 +88,7 @@ func (c *Config) guide(ctx *gin.Context, address string, channels func() (map[st
 	// kept: the client decodes it, the proxy does not.
 	keep := resp.Header.Get("Content-Encoding") == ""
 	var src io.Reader = body
-	if kept != nil {
+	if channels != nil {
 		// Filtered as it streams: it is sent uncompressed, with a length
 		// nobody knows yet.
 		if start, _ := body.Peek(2); bytes.Equal(start, []byte{0x1f, 0x8b}) || strings.EqualFold(resp.Header.Get("Content-Encoding"), "gzip") {
@@ -102,8 +113,8 @@ func (c *Config) guide(ctx *gin.Context, address string, channels func() (map[st
 
 	record := newRecorder()
 	out := io.MultiWriter(flushWriter{ctx.Writer}, record)
-	if kept != nil {
-		err = xmltv.Filter(out, src, func(channel string) bool { return kept[channel] })
+	if channels != nil {
+		err = xmltv.Map(out, src, channels)
 	} else {
 		_, err = io.Copy(out, src)
 	}

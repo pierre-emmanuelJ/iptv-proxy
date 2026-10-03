@@ -51,6 +51,20 @@ var elements = map[string]*regexp.Regexp{
 // Filter copies the guide from src to dst without the channels keep
 // refuses, nor their programmes.
 func Filter(dst io.Writer, src io.Reader, keep func(channel string) bool) error {
+	return Map(dst, src, func(channel string) []string {
+		if keep(channel) {
+			return []string{channel}
+		}
+		return nil
+	})
+}
+
+// Map copies the guide from src to dst, giving each channel the ids ids
+// returns for it: none leaves the channel and its programmes out, its own
+// keeps it as it is, another renames it, several copy it under each. A
+// renamed channel also gets its new id as its first display name: that is
+// how media servers match a guide to the channel numbers of a tuner.
+func Map(dst io.Writer, src io.Reader, ids func(channel string) []string) error {
 	r := bufio.NewReaderSize(src, 64<<10)
 	w := bufio.NewWriterSize(dst, 64<<10)
 	// After an element left out, the blanks that followed it go too: the
@@ -91,11 +105,16 @@ func Filter(dst io.Writer, src io.Reader, keep func(channel string) bool) error 
 			var startTag int
 			element, startTag, err = readElement(r, name)
 			if err == nil {
-				if keep(channelOf(element[:startTag], name)) {
-					_, err = w.Write(element)
-				} else {
-					skipBlank = true
+				to := ids(channelOf(element[:startTag], name))
+				for i, id := range to {
+					if i > 0 {
+						err = w.WriteByte('\n')
+					}
+					if err == nil {
+						err = writeAs(w, element, startTag, name, id)
+					}
 				}
+				skipBlank = len(to) == 0
 			}
 		default:
 			err = w.WriteByte('<')
@@ -104,6 +123,42 @@ func Filter(dst io.Writer, src io.Reader, keep func(channel string) bool) error 
 			return err
 		}
 	}
+}
+
+// writeAs writes an element under the channel id given.
+func writeAs(w *bufio.Writer, element []byte, startTag int, name, id string) error {
+	m := elements[name].FindSubmatchIndex(element[:startTag])
+	if m == nil {
+		_, err := w.Write(element) // no channel to rename
+		return err
+	}
+	start, end := m[2], m[3]
+	if start < 0 {
+		start, end = m[4], m[5]
+	}
+	if html.UnescapeString(string(element[start:end])) == id {
+		_, err := w.Write(element)
+		return err
+	}
+
+	escaped := html.EscapeString(id)
+	_, _ = w.Write(element[:start])
+	_, _ = w.WriteString(escaped)
+	if name != "channel" {
+		_, err := w.Write(element[end:])
+		return err
+	}
+	label := "<display-name>" + escaped + "</display-name>"
+	if element[startTag-2] == '/' {
+		// <channel id="x"/> becomes <channel id="1">label</channel>
+		_, _ = w.Write(element[end : startTag-2])
+		_, err := w.WriteString(">" + label + "</channel>")
+		return err
+	}
+	_, _ = w.Write(element[end:startTag])
+	_, _ = w.WriteString(label)
+	_, err := w.Write(element[startTag:])
+	return err
 }
 
 // tagName returns the name of the filtered element the reader is in, without

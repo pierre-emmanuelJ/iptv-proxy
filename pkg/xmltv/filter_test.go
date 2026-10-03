@@ -75,6 +75,33 @@ func TestChannelsLeftOut(t *testing.T) {
 	}
 }
 
+func TestMap(t *testing.T) {
+	doc := `<tv>
+  <channel id="one.fr"><display-name>One</display-name></channel>
+  <channel id='two.fr'/>
+  <channel id="gone.fr"/>
+  <programme start="1" channel="one.fr"><title>A</title></programme>
+  <programme channel='two.fr' start="2"/>
+  <programme channel="gone.fr" start="3"/>
+</tv>`
+	numbers := map[string][]string{"one.fr": {"101", "102"}, "two.fr": {"2 & \"b\""}}
+	var out bytes.Buffer
+	if err := Map(&out, strings.NewReader(doc), func(c string) []string { return numbers[c] }); err != nil {
+		t.Fatal(err)
+	}
+	want := `<tv>
+  <channel id="101"><display-name>101</display-name><display-name>One</display-name></channel>
+<channel id="102"><display-name>102</display-name><display-name>One</display-name></channel>
+  <channel id='2 &amp; &#34;b&#34;'><display-name>2 &amp; &#34;b&#34;</display-name></channel>
+  <programme start="1" channel="101"><title>A</title></programme>
+<programme start="1" channel="102"><title>A</title></programme>
+  <programme channel='2 &amp; &#34;b&#34;' start="2"/>
+  </tv>`
+	if out.String() != want {
+		t.Errorf("got:\n%s\nwant:\n%s", out.String(), want)
+	}
+}
+
 func TestElementWithoutItsChannel(t *testing.T) {
 	got := filter(t, `<tv><programme start="1"><title>x</title></programme></tv>`, func(c string) bool { return c != "" })
 	if got != `<tv></tv>` {
@@ -122,6 +149,8 @@ func FuzzFilter(f *testing.F) {
 		if err := Filter(&all, strings.NewReader(doc), func(string) bool { return true }); err == nil && all.String() != doc {
 			t.Fatalf("keeping everything changed the guide:\n%q\n%q", doc, all.String())
 		}
+		// renaming and copying every channel never breaks on any input
+		_ = Map(io.Discard, strings.NewReader(doc), func(string) []string { return []string{"1", "2 & 3"} })
 		var none bytes.Buffer
 		if err := Filter(&none, strings.NewReader(doc), func(string) bool { return false }); err == nil && none.Len() > len(doc) {
 			t.Fatalf("leaving channels out made the guide larger:\n%q\n%q", doc, none.String())

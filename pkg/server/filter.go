@@ -174,7 +174,7 @@ func (c *Config) hideProvider(line string, fromXtream bool) string {
 
 // hideProviderInTrack applies hideProvider to the lines of a track.
 func (c *Config) hideProviderInTrack(track m3u.Track, fromXtream bool) m3u.Track {
-	track.ExtInf = c.hideProvider(track.ExtInf, fromXtream)
+	track.ExtInf = c.logosInLine(c.hideProvider(track.ExtInf, fromXtream))
 	extra := make([]string, 0, len(track.Extra))
 	for _, line := range track.Extra {
 		if line = c.hideProvider(line, fromXtream); line != "" {
