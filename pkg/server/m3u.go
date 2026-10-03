@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -50,8 +51,9 @@ type m3uPlaylist struct {
 }
 
 type m3uState struct {
-	// tracks are the provider's addresses, by track key.
-	tracks map[string]*url.URL
+	// tracks are the provider's addresses, by track key. They are kept as
+	// text: a playlist may hold a million tracks.
+	tracks map[string]string
 	// body is the playlist clients get.
 	body []byte
 	// guide is the address of the guide, if any; guideIDs are the guide ids
@@ -82,23 +84,26 @@ func (c *Config) loadM3U(ctx context.Context) error {
 
 	kept, body := c.proxify(playlist, false)
 	state := &m3uState{
-		tracks:   make(map[string]*url.URL, len(kept.Tracks)),
+		tracks:   make(map[string]string, len(kept.Tracks)),
 		body:     body,
 		guide:    c.m3uGuide(playlist.Header),
 		guideIDs: map[string]bool{},
 		next:     time.Now().Add(time.Duration(c.M3UCacheExpiration) * time.Hour),
 	}
 	for _, track := range kept.Tracks {
-		address, err := url.Parse(track.URI)
-		if err != nil {
-			continue // proxify() only keeps tracks with a valid address
+		state.tracks[trackKey(track.URI)] = track.URI
+		if !c.rules.Active() {
+			continue // the guide is only filtered with the playlist
 		}
-		state.tracks[trackKey(track.URI)] = address
 		if id, ok := m3u.Attribute(track.ExtInf, "tvg-id"); ok && id != "" {
 			state.guideIDs[id] = true
 		}
 	}
 	c.m3u.current.Store(state)
+
+	// What reading took (the provider's playlist, the copies made on the
+	// way) goes back to the system now, not at some later collection.
+	debug.FreeOSMemory()
 	return nil
 }
 
@@ -130,9 +135,14 @@ func (c *Config) getM3U(ctx *gin.Context) {
 
 // m3uTrack serves a track of the playlist.
 func (c *Config) m3uTrack(ctx *gin.Context) {
-	address, ok := c.m3uCurrent(ctx.Request.Context()).tracks[ctx.Param("track")]
+	raw, ok := c.m3uCurrent(ctx.Request.Context()).tracks[ctx.Param("track")]
 	if !ok {
 		ctx.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	address, err := url.Parse(raw)
+	if err != nil {
+		ctx.AbortWithStatus(http.StatusNotFound) // proxify() only keeps valid addresses
 		return
 	}
 	// A playlist does not say what a track is. A file is recognized by its
@@ -171,7 +181,7 @@ func (c *Config) m3uHeader(original, cleaned string) string {
 
 	named := false
 	header := m3u.EditAttributes(cleaned, func(name, value string) (string, bool) {
-		if name == "url-tvg" || name == "x-tvg-url" {
+		if strings.EqualFold(name, "url-tvg") || strings.EqualFold(name, "x-tvg-url") {
 			named = true
 			return guide, true
 		}

@@ -26,6 +26,14 @@
   changes. Without `--custom-id`, the first element of track addresses is
   derived from your settings instead of drawn at random: addresses survive a
   restart. Players load the playlist again once, then keep working.
+- A large M3U playlist takes far less memory and starts faster: with a
+  playlist of 910,000 tracks (259 MB), 440 MB once loaded instead of 1.4 GB,
+  and 5.5 s to start instead of 9.5 s.
+
+### Fixed
+
+- Playlist attribute names are read regardless of case, as players do:
+  some providers write `tvg-ID` or `Group-Title`, which the filters missed.
 
 ## 3.12.0
 

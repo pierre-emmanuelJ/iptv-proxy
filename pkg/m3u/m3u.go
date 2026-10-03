@@ -107,9 +107,11 @@ func attributes(line string) string {
 }
 
 // Attribute returns the value of an attribute of an #EXTM3U or #EXTINF line.
+// Names are compared regardless of case, as players do: providers write
+// "tvg-ID" as well as "tvg-id".
 func Attribute(line, name string) (string, bool) {
 	for _, m := range attribute.FindAllStringSubmatch(attributes(line), -1) {
-		if m[1] == name {
+		if strings.EqualFold(m[1], name) {
 			return m[2], true
 		}
 	}

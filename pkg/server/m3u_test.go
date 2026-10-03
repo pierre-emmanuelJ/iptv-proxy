@@ -114,7 +114,8 @@ func TestM3UGuide(t *testing.T) {
 func TestM3UGuideFiltered(t *testing.T) {
 	p := newProvider(t)
 	list := "#EXTM3U x-tvg-url=\"" + p.URL + "/epg.xml, http://second.example/epg.xml\"\n" +
-		"#EXTINF:-1 tvg-id=\"one.fr\" group-title=\"News\",One\n" + p.URL + "/stream/a.ts\n" +
+		// as some providers write it
+		"#EXTINF:-1 tvg-ID=\"one.fr\" group-title=\"News\",One\n" + p.URL + "/stream/a.ts\n" +
 		"#EXTINF:-1 tvg-id=\"sport.fr\" group-title=\"Sport\",Sport\n" + p.URL + "/stream/b.ts\n"
 	file := t.TempDir() + "/list.m3u"
 	if err := os.WriteFile(file, []byte(list), 0o600); err != nil {

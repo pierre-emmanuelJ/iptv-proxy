@@ -120,6 +120,12 @@ func TestAttribute(t *testing.T) {
 			t.Errorf("Attribute(%q) = %q, %v; want %q", name, got, ok, want)
 		}
 	}
+	if got, ok := Attribute(`#EXTINF:-1 tvg-ID="one.fr" Group-Title="G",One`, "tvg-id"); !ok || got != "one.fr" {
+		t.Errorf("names regardless of case: %q, %v", got, ok)
+	}
+	if got := (Track{ExtInf: `#EXTINF:-1 GROUP-TITLE="G",One`}).Group(); got != "G" {
+		t.Errorf("group regardless of case: %q", got)
+	}
 	if _, ok := Attribute(line, "tvg-logo"); ok {
 		t.Error("an absent attribute was found")
 	}

@@ -307,7 +307,7 @@ func (c *Config) proxify(playlist *m3u.Playlist, fromXtream bool) (*m3u.Playlist
 	}
 
 	for _, track := range playlist.Tracks {
-		if !c.keepTrack(track) {
+		if c.rules.Active() && !c.keepTrack(track) {
 			continue
 		}
 		uri, err := c.replaceURL(track.URI, fromXtream)
