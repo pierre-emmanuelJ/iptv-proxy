@@ -119,4 +119,8 @@ type ProxyConfig struct {
 	// Sources are more Xtream accounts, served with the one of the Xtream
 	// options as one catalogue.
 	Sources []Source
+	// StatusPassword, when set, opens a read-only status page at /status.
+	StatusPassword CredentialString
+	// Version is the proxy's version, shown on the status page.
+	Version string
 }

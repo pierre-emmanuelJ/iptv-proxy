@@ -20,7 +20,7 @@ func load(t *testing.T, env map[string]string) {
 		t.Setenv("HOME", t.TempDir())
 	}
 	t.Chdir(t.TempDir())
-	for _, name := range []string{"USER", "PASSWORD", "HOSTNAME", "PROXY_USER", "PROXY_PASSWORD", "PROXY_HOSTNAME", "PORT", "M3U_URL", "XTREAM_USER", "XTREAM_PASSWORD", "XTREAM_BASE_URL", "ADVERTISED_PORT", "HTTPS", "USER_AGENT", "XTREAM_API_GET", "XTREAM_API_GET_MOVIES", "NO_STREAM_SHARING", "GROUP_REGEX", "CHANNEL_REGEX", "GROUP_EXCLUDE_REGEX", "CHANNEL_EXCLUDE_REGEX", "LISTEN_ADDRESS", "XMLTV_URL", "MAX_CONNECTIONS", "IPTV_PROXY_CONFIG", "XTREAM_PASSTHROUGH", "HDHOMERUN_GROUP_REGEX", "HDHOMERUN_CHANNEL_REGEX", "HDHOMERUN_GROUP_EXCLUDE_REGEX", "HDHOMERUN_CHANNEL_EXCLUDE_REGEX"} {
+	for _, name := range []string{"USER", "PASSWORD", "HOSTNAME", "PROXY_USER", "PROXY_PASSWORD", "PROXY_HOSTNAME", "PORT", "M3U_URL", "XTREAM_USER", "XTREAM_PASSWORD", "XTREAM_BASE_URL", "ADVERTISED_PORT", "HTTPS", "USER_AGENT", "XTREAM_API_GET", "XTREAM_API_GET_MOVIES", "NO_STREAM_SHARING", "GROUP_REGEX", "CHANNEL_REGEX", "GROUP_EXCLUDE_REGEX", "CHANNEL_EXCLUDE_REGEX", "LISTEN_ADDRESS", "XMLTV_URL", "MAX_CONNECTIONS", "IPTV_PROXY_CONFIG", "XTREAM_PASSTHROUGH", "HDHOMERUN_GROUP_REGEX", "HDHOMERUN_CHANNEL_REGEX", "HDHOMERUN_GROUP_EXCLUDE_REGEX", "HDHOMERUN_CHANNEL_EXCLUDE_REGEX", "STATUS_PASSWORD"} {
 		t.Setenv(name, "")
 		os.Unsetenv(name) // nolint: errcheck
 	}
@@ -237,6 +237,20 @@ func TestProxyConfigTunerFiltersAndPassthrough(t *testing.T) {
 	}
 	if !conf.XtreamPassthrough {
 		t.Error("XTREAM_PASSTHROUGH is not read")
+	}
+}
+
+func TestStatusPasswordAndVersion(t *testing.T) {
+	load(t, map[string]string{"STATUS_PASSWORD": "look"})
+	version := rootCmd.Version
+	rootCmd.Version = "v1.2.3"
+	t.Cleanup(func() { rootCmd.Version = version })
+	conf, err := proxyConfig(rootCmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conf.StatusPassword != "look" || conf.Version != "v1.2.3" {
+		t.Errorf("status password %q, version %q", conf.StatusPassword, conf.Version)
 	}
 }
 

@@ -134,6 +134,8 @@ func proxyConfig(cmd *cobra.Command) (*config.ProxyConfig, error) {
 		},
 		MaxConnections:    viper.GetInt("max-connections"),
 		XtreamPassthrough: viper.GetBool("xtream-passthrough"),
+		StatusPassword:    config.CredentialString(viper.GetString("status-password")),
+		Version:           cmd.Root().Version,
 	}
 	users, err := configUsers()
 	if err != nil {
@@ -241,7 +243,8 @@ func fileSetting(option string) (string, bool) {
 
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
-func Execute() {
+func Execute(version string) {
+	rootCmd.Version = version
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -283,6 +286,7 @@ func init() {
 	rootCmd.Flags().String("hdhomerun-channel-exclude-regex", "", "Leave out of the tuner the channels whose name matches this regular expression")
 	rootCmd.Flags().Int("hdhomerun-tuners", 0, "Number of tuners the HDHomeRun tuner announces (default: the connections the Xtream account allows, else 2)")
 	rootCmd.Flags().Bool("proxy-logos", false, "Serve the logos and covers of playlists and of the Xtream API through the proxy, so that players reach no other host")
+	rootCmd.Flags().String("status-password", "", "Password of a read-only status page at /status (streams being watched, sources, tuner); no page without it")
 	rootCmd.Flags().Bool("no-stream-sharing", false, "Open one provider connection per client for a live stream, instead of sharing one between the clients watching it")
 	rootCmd.Flags().String("group-regex", "", `Keep only the live channels whose group matches this regular expression, e.g. "^(FR|UK) "`)
 	rootCmd.Flags().String("channel-regex", "", `Keep only the live channels whose name matches this regular expression, e.g. "HD$"`)

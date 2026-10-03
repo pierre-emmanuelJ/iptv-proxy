@@ -31,6 +31,10 @@ func (c *Config) routes(r *gin.RouterGroup) {
 	r.GET("/hls/:token/:name", c.hlsStream)
 	// Logos and covers, with --proxy-logos (see logoAddress).
 	r.GET("/logo/:token/:name", c.proxyLogo)
+	if c.StatusPassword != "" {
+		r.GET("/status", c.statusAuth, c.statusHTML)
+		r.GET("/status.json", c.statusAuth, c.statusJSON)
+	}
 
 	// Xtream service endpoints
 	if c.XtreamBaseURL != "" {
