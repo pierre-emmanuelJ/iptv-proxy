@@ -48,6 +48,22 @@ var elements = map[string]*regexp.Regexp{
 	"programme": regexp.MustCompile(`\schannel\s*=\s*(?:"([^"]*)"|'([^']*)')`),
 }
 
+// iconSource finds the address of the images of an element: <icon src=...>.
+var iconSource = regexp.MustCompile(`<icon\s[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)')`)
+
+// Option changes how a guide is copied.
+type Option func(*copying)
+
+type copying struct {
+	icon func(address string) string
+}
+
+// Icons gives the images of the guide (channel logos, programme pictures)
+// the addresses icon returns for theirs.
+func Icons(icon func(address string) string) Option {
+	return func(c *copying) { c.icon = icon }
+}
+
 // Filter copies the guide from src to dst without the channels keep
 // refuses, nor their programmes.
 func Filter(dst io.Writer, src io.Reader, keep func(channel string) bool) error {
@@ -64,27 +80,31 @@ func Filter(dst io.Writer, src io.Reader, keep func(channel string) bool) error 
 // keeps it as it is, another renames it, several copy it under each. A
 // renamed channel also gets its new id as its first display name: that is
 // how media servers match a guide to the channel numbers of a tuner.
-func Map(dst io.Writer, src io.Reader, ids func(channel string) []string) error {
-	return copyGuide(dst, src, ids, nil, false)
+func Map(dst io.Writer, src io.Reader, ids func(channel string) []string, options ...Option) error {
+	return copyGuide(dst, src, ids, nil, false, options)
 }
 
 // Merge copies the guide from src as Map does, and writes what more writes
 // just before the guide's end tag: typically the channels of other guides,
 // given by Elements.
-func Merge(dst io.Writer, src io.Reader, ids func(channel string) []string, more func(w io.Writer) error) error {
-	return copyGuide(dst, src, ids, more, false)
+func Merge(dst io.Writer, src io.Reader, ids func(channel string) []string, more func(w io.Writer) error, options ...Option) error {
+	return copyGuide(dst, src, ids, more, false, options)
 }
 
 // Elements writes the <channel> and <programme> elements of the guide from
 // src, as Map gives them their ids, one per line, and nothing else: the
 // guide's own head and end are left out.
-func Elements(dst io.Writer, src io.Reader, ids func(channel string) []string) error {
-	return copyGuide(dst, src, ids, nil, true)
+func Elements(dst io.Writer, src io.Reader, ids func(channel string) []string, options ...Option) error {
+	return copyGuide(dst, src, ids, nil, true, options)
 }
 
 // copyGuide copies a guide, or only its elements, with more written before
 // its end tag.
-func copyGuide(dst io.Writer, src io.Reader, ids func(channel string) []string, more func(w io.Writer) error, elementsOnly bool) error {
+func copyGuide(dst io.Writer, src io.Reader, ids func(channel string) []string, more func(w io.Writer) error, elementsOnly bool, options []Option) error {
+	var how copying
+	for _, option := range options {
+		option(&how)
+	}
 	r := bufio.NewReaderSize(src, 64<<10)
 	w := bufio.NewWriterSize(dst, 64<<10)
 	// After an element left out, the blanks that followed it go too: the
@@ -137,6 +157,9 @@ func copyGuide(dst io.Writer, src io.Reader, ids func(channel string) []string, 
 			var element []byte
 			var startTag int
 			element, startTag, err = readElement(r, name)
+			if err == nil && how.icon != nil {
+				element = withIcons(element, how.icon)
+			}
 			if err == nil {
 				to := ids(channelOf(element[:startTag], name))
 				for i, id := range to {
@@ -202,6 +225,29 @@ func writeAs(w *bufio.Writer, element []byte, startTag int, name, id string) err
 	_, _ = w.WriteString(label)
 	_, err := w.Write(element[at:])
 	return err
+}
+
+// withIcons gives the images of an element the addresses icon returns.
+func withIcons(element []byte, icon func(string) string) []byte {
+	found := iconSource.FindAllSubmatchIndex(element, -1)
+	if found == nil {
+		return element
+	}
+	var out []byte
+	done := 0
+	for _, m := range found {
+		start, end := m[2], m[3]
+		if start < 0 {
+			start, end = m[4], m[5]
+		}
+		address := html.UnescapeString(string(element[start:end]))
+		if to := icon(address); to != address {
+			out = append(out, element[done:start]...)
+			out = append(out, html.EscapeString(to)...)
+			done = end
+		}
+	}
+	return append(out, element[done:]...)
 }
 
 // tagName returns the name of the filtered element the reader is in, without

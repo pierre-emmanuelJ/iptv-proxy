@@ -241,5 +241,5 @@ func (c *Config) m3uXMLTV(ctx *gin.Context) {
 	if u.rules.Active() {
 		mapping = func() (channelMap, error) { return keeping(audience.guideIDs), nil }
 	}
-	c.guide(ctx, state.guide, userAnswerKey(u, "guide", ctx.Request.Form), mapping, nil)
+	c.guide(ctx, state.guide, userAnswerKey(u, "guide", ctx.Request.Form), mapping, nil, c.guideIcons(false))
 }

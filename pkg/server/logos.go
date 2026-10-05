@@ -79,3 +79,29 @@ func (c *Config) logosInLine(line string) string {
 		return value, true
 	})
 }
+
+// guideIcons is what a guide's images (channel logos, programme pictures)
+// become: with --proxy-logos, the proxy's addresses. The tuner's guide also
+// gives through the proxy its plain http images when the proxy's address is
+// HTTPS: media servers show them in apps served over HTTPS (Plex), which
+// refuse an http image. nil leaves them as they are.
+func (c *Config) guideIcons(tuner bool) func(string) string {
+	proxied := func(address string) string {
+		if logo := c.logoAddress(address); logo != "" {
+			return logo
+		}
+		return address
+	}
+	switch {
+	case c.ProxyLogos:
+		return proxied
+	case tuner && strings.HasPrefix(c.proxyBaseURL(), "https:"):
+		return func(address string) string {
+			if u, err := url.Parse(strings.TrimSpace(address)); err != nil || !strings.EqualFold(u.Scheme, "http") {
+				return address
+			}
+			return proxied(address)
+		}
+	}
+	return nil
+}

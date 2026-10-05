@@ -346,7 +346,7 @@ func (c *Config) tunerGuide(ctx *gin.Context) {
 			}
 		}
 		return func(channel string) []string { return numbers[channel] }, nil
-	}, c.otherGuides(nil))
+	}, c.otherGuides(nil), c.guideIcons(true))
 }
 
 // tunerCount is the number of tuners announced: --hdhomerun-tuners, else the
