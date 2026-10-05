@@ -69,7 +69,11 @@ type tuner struct {
 	mu       sync.Mutex
 	channels map[string]tunerChannel // by number
 	at       time.Time
-	count    int // tuners, once known
+	// what the Xtream account tells, once asked: its connections, and
+	// whether it serves live television as HLS only
+	asked   bool
+	count   int
+	hlsOnly bool
 }
 
 // HDHomeRunHandler is the tuner's HTTP API.
@@ -299,12 +303,18 @@ func (c *Config) tunerStream(ctx *gin.Context) {
 	}
 
 	candidates := c.tunerCandidates(ctx, ch)
-	c.streamLiveFrom(ctx, candidates[0].url, c.openFirst(candidates))
+	c.streamLiveFrom(ctx, candidates[0].url, c.openFirstAs(candidates, c.remuxHLS))
 }
 
 // tunerCandidates are where a channel can be read: its own stream, then the
 // provider's other channels with its guide id, in the order of the list.
 func (c *Config) tunerCandidates(ctx *gin.Context, ch tunerChannel) []candidate {
+	// a tuner sends MPEG-TS: an account that serves HLS only is asked for
+	// HLS, which ffmpeg turns into MPEG-TS
+	ext := ".ts"
+	if _, hlsOnly := c.tunerAccount(ctx); hlsOnly {
+		ext = ".m3u8"
+	}
 	var candidates []candidate
 	for i, s := range append([]string{ch.source}, ch.others...) {
 		switch {
@@ -312,10 +322,10 @@ func (c *Config) tunerCandidates(ctx *gin.Context, ch tunerChannel) []candidate 
 			// a track's address may hold credentials: not in the logs
 			candidates = append(candidates, candidate{url: s, name: "address " + strconv.Itoa(i+1) + " of " + ch.Name})
 		case c.merged():
-			// a tuner sends MPEG-TS; the channel's other sources come along
-			candidates = append(candidates, c.streamCandidates(ctx, "live/", url.PathEscape(s)+".ts", true)...)
+			// the channel's other sources come along
+			candidates = append(candidates, c.streamCandidates(ctx, "live/", url.PathEscape(s)+ext, true)...)
 		default:
-			candidates = append(candidates, candidate{url: c.accountOf(ctx).StreamURL("live/", url.PathEscape(s)+".ts"), name: "stream " + s})
+			candidates = append(candidates, candidate{url: c.accountOf(ctx).StreamURL("live/", url.PathEscape(s)+ext), name: "stream " + s})
 		}
 	}
 	return candidates
@@ -356,32 +366,46 @@ func (c *Config) tunerCount(ctx *gin.Context) int {
 	if c.HDHomeRunTuners > 0 {
 		return c.HDHomeRunTuners
 	}
+	count, _ := c.tunerAccount(ctx)
+	return count
+}
+
+// tunerAccount asks the Xtream account, once, how many streams it allows at
+// once (2 when it does not say) and whether it serves live television as
+// HLS only (allowed_output_formats without "ts").
+func (c *Config) tunerAccount(ctx *gin.Context) (count int, hlsOnly bool) {
 	c.tuner.mu.Lock()
-	known := c.tuner.count
+	asked, count, hlsOnly := c.tuner.asked, c.tuner.count, c.tuner.hlsOnly
 	c.tuner.mu.Unlock()
-	if known > 0 {
-		return known
+	if asked {
+		return count, hlsOnly
 	}
 
-	count := defaultTuners
+	count = defaultTuners
 	if c.XtreamBaseURL != "" {
 		if status, _, body, err := c.providerGet(ctx, "player_api.php", nil); err == nil && status == http.StatusOK {
 			var login struct {
 				UserInfo struct {
-					MaxConnections any `json:"max_connections"`
+					MaxConnections any   `json:"max_connections"`
+					Formats        []any `json:"allowed_output_formats"`
 				} `json:"user_info"`
 			}
 			if json.Unmarshal(body, &login) == nil {
 				if n, err := strconv.Atoi(xtream.Text(login.UserInfo.MaxConnections)); err == nil && n > 0 {
 					count = n
 				}
+				formats := map[string]bool{}
+				for _, f := range login.UserInfo.Formats {
+					formats[strings.ToLower(xtream.Text(f))] = true
+				}
+				hlsOnly = formats["m3u8"] && !formats["ts"]
 			}
 		}
 	}
 	c.tuner.mu.Lock()
-	c.tuner.count = count
+	c.tuner.asked, c.tuner.count, c.tuner.hlsOnly = true, count, hlsOnly
 	c.tuner.mu.Unlock()
-	return count
+	return count, hlsOnly
 }
 
 // hdhomerunAddress is the address the tuner listens on.

@@ -105,6 +105,10 @@ type Config struct {
 
 	// tuner is the HDHomeRun tuner's state.
 	tuner tuner
+	// ffmpeg is the path of the ffmpeg the tuner remuxes HLS with, or "";
+	// ffmpegWait how long it may take to give its first bytes.
+	ffmpeg     string
+	ffmpegWait time.Duration
 
 	// users are the proxy's users, the first one first.
 	users       []*proxyUser
@@ -164,6 +168,9 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 		return nil, fmt.Errorf("the HDHomeRun tuner's filters: %w", err)
 	}
 	c.tunerRules = filter.Combine(c.rules, tuner)
+	if err := c.setupFFmpeg(); err != nil {
+		return nil, err
+	}
 	if err := c.setupSources(); err != nil {
 		return nil, err
 	}

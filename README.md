@@ -101,6 +101,12 @@ Tags: `latest`, and for a given version `v4.0.0`, `v4.0` or `v4` (`v3` for the
 pulls the image of your machine. The `-amd64` and `-arm64` tags
 (`pierro777/iptv-proxy:latest-arm64`) name one architecture, as before.
 
+Each tag also has an image with ffmpeg, about 140 MB larger: `latest-ffmpeg`,
+`v4-ffmpeg`, `v4.7.0-ffmpeg`... Take it if the HDHomeRun tuner serves
+channels your provider has only as HLS (see
+[Plex and other media servers](#plex-and-other-media-servers)); nothing
+else needs it.
+
 ### Docker Compose
 
 ```yaml
@@ -192,6 +198,7 @@ wins over the variable, and the variable over the file.
 | `--hdhomerun-port` | `HDHOMERUN_PORT` | | Port of an HDHomeRun tuner for Plex, Emby, Jellyfin or Channels DVR. Local network only. See [Plex and other media servers](#plex-and-other-media-servers). |
 | `--hdhomerun-group-regex`, `--hdhomerun-channel-regex`, `--hdhomerun-group-exclude-regex`, `--hdhomerun-channel-exclude-regex` | `HDHOMERUN_GROUP_REGEX`... | | Filters of the tuner alone, applied after the proxy's: the media server gets fewer channels than your players. |
 | `--hdhomerun-tuners` | `HDHOMERUN_TUNERS` | the account's connections, else `2` | Number of tuners announced: how many channels a media server plays at once. |
+| `--ffmpeg` | `FFMPEG` | `ffmpeg` | ffmpeg the HDHomeRun tuner turns HLS channels into MPEG-TS with, when it is found (the `-ffmpeg` images have it). `none` goes without. |
 | `--group-regex` | `GROUP_REGEX` | | Keep only the live channels whose group matches this regular expression. See [Filtering channels](#filtering-channels). |
 | `--channel-regex` | `CHANNEL_REGEX` | | Keep only the live channels whose name matches this regular expression. |
 | `--group-exclude-regex` | `GROUP_EXCLUDE_REGEX` | | Leave out the live channels whose group matches this regular expression. |
@@ -500,7 +507,14 @@ When Plex asks for the guide, choose the XMLTV option and give
   connections (`--hdhomerun-tuners` to change it): a media server never
   opens more streams than that.
 - Media servers expect MPEG-TS. With an Xtream account, the tuner asks the
-  provider for MPEG-TS; an M3U playlist of HLS streams may not play.
+  provider for MPEG-TS. A channel the provider has only as HLS (an M3U
+  playlist of `.m3u8` addresses, or an account whose
+  `allowed_output_formats` has no `ts`) plays when ffmpeg is at hand: take
+  an `-ffmpeg` image (see [Docker images](#docker-images)), or have
+  `ffmpeg` in the `PATH` of the binary. ffmpeg then reads the HLS stream and
+  writes it as MPEG-TS, without encoding it again; viewers of a channel
+  share one ffmpeg. Without ffmpeg, such a channel is passed on as a
+  playlist, which media servers do not play.
 - Plex finds a tuner by its address, entered by hand: automatic discovery on
   the network is not supported.
 
@@ -629,14 +643,14 @@ docker compose up -d
 - It does not edit the catalogue: no channel editor, no renaming, no guide
   mapping. Players get what the provider sends.
 - It does not transcode, record or cache streams: they are passed on as they
-  come.
+  come. The one exception is the tuner's HLS channels, which ffmpeg turns into
+  MPEG-TS, without encoding them again.
 - It has no web interface to change anything: the status page only shows.
 
 ## Roadmap
 
-Planned, not available yet:
-
-- Optional ffmpeg profiles.
+Nothing is planned beyond fixes: what comes next depends on what users ask
+for. Open an issue for a bug or an idea, or a discussion for a question.
 
 See the [changelog](CHANGELOG.md) for what each release brought.
 

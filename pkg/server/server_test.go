@@ -68,6 +68,11 @@ type provider struct {
 	liveDown atomic.Bool
 	// icons gives the guide images: a logo over http, a picture over https.
 	icons atomic.Bool
+	// hlsOnly makes the account serve live television as HLS only.
+	hlsOnly atomic.Bool
+	// hlsDir is served at /hlsfiles/, and live channel 1 as HLS
+	// (/live/xuser/xpass/1.m3u8) redirects to its index.m3u8.
+	hlsDir string
 }
 
 func (p *provider) hit(r *http.Request) {
@@ -238,7 +243,11 @@ func newProvider(t *testing.T) *provider {
 			if r.URL.Query().Get("username") == x2User {
 				connections = "1"
 			}
-			fmt.Fprintf(w, `{"user_info":{"username":%q,"password":%q,"message":"","auth":1,"status":"Active","exp_date":null,"is_trial":"0","active_cons":0,"created_at":"1700000000","max_connections":%q,"allowed_output_formats":["m3u8","ts","rtmp"]},"server_info":{"url":"provider.example","port":"80","https_port":"443","server_protocol":"http","rtmp_port":"8880","timezone":"Europe\/Paris","timestamp_now":1759400000,"time_now":"2025-10-02 12:00:00","process":true}}`,
+			formats := `["m3u8","ts","rtmp"]`
+			if p.hlsOnly.Load() {
+				formats = `["m3u8"]`
+			}
+			fmt.Fprintf(w, `{"user_info":{"username":%q,"password":%q,"message":"","auth":1,"status":"Active","exp_date":null,"is_trial":"0","active_cons":0,"created_at":"1700000000","max_connections":%q,"allowed_output_formats":`+formats+`},"server_info":{"url":"provider.example","port":"80","https_port":"443","server_protocol":"http","rtmp_port":"8880","timezone":"Europe\/Paris","timestamp_now":1759400000,"time_now":"2025-10-02 12:00:00","process":true}}`,
 				r.URL.Query().Get("username"), r.URL.Query().Get("password"), connections)
 		case "get_live_categories":
 			// ids as strings here, as numbers in the streams
@@ -365,6 +374,17 @@ func newProvider(t *testing.T) *provider {
 		w.Header().Set("X-Got-Range", r.Header.Get("Range"))
 		w.Header().Set("X-Got-Connection", r.Header.Get("Connection"))
 		fmt.Fprint(w, "live-one")
+	})
+	mux.HandleFunc("/hlsfiles/", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		p.mu.Lock()
+		dir := p.hlsDir
+		p.mu.Unlock()
+		http.StripPrefix("/hlsfiles/", http.FileServer(http.Dir(dir))).ServeHTTP(w, r)
+	})
+	mux.HandleFunc("/live/xuser/xpass/1.m3u8", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		http.Redirect(w, r, "/hlsfiles/index.m3u8", http.StatusFound)
 	})
 	mux.HandleFunc("/live/xuser/xpass/4.ts", func(w http.ResponseWriter, r *http.Request) {
 		p.hit(r)

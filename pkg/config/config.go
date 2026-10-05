@@ -107,6 +107,9 @@ type ProxyConfig struct {
 	HDHomeRunTuners int
 	// HDHomeRunFilter keeps the tuner's channels, after the proxy's filters.
 	HDHomeRunFilter filter.Patterns
+	// FFmpeg is the ffmpeg the tuner turns HLS channels into MPEG-TS with:
+	// a command found in the PATH or a path; "none" goes without.
+	FFmpeg string
 	// Users, when given, are the users of the proxy instead of the one of
 	// User and Password.
 	Users []User

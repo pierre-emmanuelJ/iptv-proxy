@@ -537,6 +537,13 @@ func (c *Config) liveFallbacks(ctx *gin.Context, shown string) []sourceEntry {
 // openFirst opens a stream at the first of its candidates that has a
 // connection left and answers. A source at its limit is tried last.
 func (c *Config) openFirst(candidates []candidate) opener {
+	return c.openFirstAs(candidates, nil)
+}
+
+// openFirstAs opens a stream as openFirst does, each answer going through
+// as, which may make it another (an HLS playlist into MPEG-TS) or fail it:
+// the next candidate is then tried.
+func (c *Config) openFirstAs(candidates []candidate, as func(ctx context.Context, resp *http.Response, header http.Header) (*http.Response, error)) opener {
 	return func(ctx context.Context, header http.Header) (*http.Response, error) {
 		order := make([]candidate, 0, len(candidates))
 		var full []candidate
@@ -551,6 +558,9 @@ func (c *Config) openFirst(candidates []candidate) opener {
 
 		for i, cand := range order {
 			resp, err := c.upstreamDo(ctx, c.client, cand.url, header)
+			if err == nil && resp.StatusCode < http.StatusBadRequest && as != nil {
+				resp, err = as(ctx, resp, header)
+			}
 			last := i == len(order)-1
 			if err == nil && resp.StatusCode < http.StatusBadRequest {
 				return cand.src.hold(resp), nil

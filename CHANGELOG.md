@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.7.0
+
+### Added
+
+- **HLS channels on the HDHomeRun tuner**, with ffmpeg. Media servers expect
+  MPEG-TS; a channel the provider has only as HLS (an M3U playlist of
+  `.m3u8` addresses, or an Xtream account whose `allowed_output_formats` has
+  no `ts`, which is then asked for HLS) is read by ffmpeg and written as
+  MPEG-TS, without encoding it again. Viewers of a channel share one ffmpeg;
+  when ffmpeg fails on an address, the channel's next one is tried. ffmpeg's
+  messages are logged without addresses.
+- **`-ffmpeg` images**: each Docker tag has one with ffmpeg (`latest-ffmpeg`,
+  `v4-ffmpeg`, `v4.7.0-ffmpeg`...), for amd64 and ARM. The usual images do
+  not change.
+- `--ffmpeg` (`FFMPEG`): the ffmpeg to use. By default `ffmpeg`, used when it
+  is found; `none` goes without.
+
 ## 4.6.0
 
 ### Added

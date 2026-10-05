@@ -87,6 +87,56 @@ dockers:
     skip_push: false
     dockerfile: .Dockerfile.goreleaser
 
+  # The -ffmpeg images: the same, with ffmpeg for the HDHomeRun tuner's HLS
+  # channels.
+  - image_templates:
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:{{ .Tag }}-ffmpeg-arm64"
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}-ffmpeg-arm64"
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}.{{ .Minor }}-ffmpeg-arm64"
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:latest-ffmpeg-arm64"
+    - "pierro777/iptv-proxy:{{ .Tag }}-ffmpeg-arm64"
+    - "pierro777/iptv-proxy:v{{ .Major }}-ffmpeg-arm64"
+    - "pierro777/iptv-proxy:v{{ .Major }}.{{ .Minor }}-ffmpeg-arm64"
+    - "pierro777/iptv-proxy:latest-ffmpeg-arm64"
+    use: buildx
+    goos: linux
+    goarch: arm64
+    ids:
+    - iptv-proxy
+    build_flag_templates:
+    - "--platform=linux/arm64/v8"
+    - "--target=ffmpeg"
+    - "--label=org.opencontainers.image.created={{.Date}}"
+    - "--label=org.opencontainers.image.name={{.ProjectName}}"
+    - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+    - "--label=org.opencontainers.image.version={{.Version}}"
+    skip_push: false
+    dockerfile: .Dockerfile.goreleaser
+
+  - image_templates:
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:{{ .Tag }}-ffmpeg-amd64"
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}-ffmpeg-amd64"
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}.{{ .Minor }}-ffmpeg-amd64"
+    - "ghcr.io/pierre-emmanuelj/iptv-proxy:latest-ffmpeg-amd64"
+    - "pierro777/iptv-proxy:{{ .Tag }}-ffmpeg-amd64"
+    - "pierro777/iptv-proxy:v{{ .Major }}-ffmpeg-amd64"
+    - "pierro777/iptv-proxy:v{{ .Major }}.{{ .Minor }}-ffmpeg-amd64"
+    - "pierro777/iptv-proxy:latest-ffmpeg-amd64"
+    use: buildx
+    goos: linux
+    goarch: amd64
+    ids:
+    - iptv-proxy
+    build_flag_templates:
+    - "--platform=linux/amd64"
+    - "--target=ffmpeg"
+    - "--label=org.opencontainers.image.created={{.Date}}"
+    - "--label=org.opencontainers.image.name={{.ProjectName}}"
+    - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+    - "--label=org.opencontainers.image.version={{.Version}}"
+    skip_push: false
+    dockerfile: .Dockerfile.goreleaser
+
 # The usual tags name both architectures: Docker pulls the one of the host.
 docker_manifests:
   - name_template: "pierro777/iptv-proxy:{{ .Tag }}"
@@ -121,3 +171,35 @@ docker_manifests:
     image_templates:
       - "ghcr.io/pierre-emmanuelj/iptv-proxy:latest-amd64"
       - "ghcr.io/pierre-emmanuelj/iptv-proxy:latest-arm64"
+  - name_template: "pierro777/iptv-proxy:{{ .Tag }}-ffmpeg"
+    image_templates:
+      - "pierro777/iptv-proxy:{{ .Tag }}-ffmpeg-amd64"
+      - "pierro777/iptv-proxy:{{ .Tag }}-ffmpeg-arm64"
+  - name_template: "pierro777/iptv-proxy:v{{ .Major }}-ffmpeg"
+    image_templates:
+      - "pierro777/iptv-proxy:v{{ .Major }}-ffmpeg-amd64"
+      - "pierro777/iptv-proxy:v{{ .Major }}-ffmpeg-arm64"
+  - name_template: "pierro777/iptv-proxy:v{{ .Major }}.{{ .Minor }}-ffmpeg"
+    image_templates:
+      - "pierro777/iptv-proxy:v{{ .Major }}.{{ .Minor }}-ffmpeg-amd64"
+      - "pierro777/iptv-proxy:v{{ .Major }}.{{ .Minor }}-ffmpeg-arm64"
+  - name_template: "pierro777/iptv-proxy:latest-ffmpeg"
+    image_templates:
+      - "pierro777/iptv-proxy:latest-ffmpeg-amd64"
+      - "pierro777/iptv-proxy:latest-ffmpeg-arm64"
+  - name_template: "ghcr.io/pierre-emmanuelj/iptv-proxy:{{ .Tag }}-ffmpeg"
+    image_templates:
+      - "ghcr.io/pierre-emmanuelj/iptv-proxy:{{ .Tag }}-ffmpeg-amd64"
+      - "ghcr.io/pierre-emmanuelj/iptv-proxy:{{ .Tag }}-ffmpeg-arm64"
+  - name_template: "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}-ffmpeg"
+    image_templates:
+      - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}-ffmpeg-amd64"
+      - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}-ffmpeg-arm64"
+  - name_template: "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}.{{ .Minor }}-ffmpeg"
+    image_templates:
+      - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}.{{ .Minor }}-ffmpeg-amd64"
+      - "ghcr.io/pierre-emmanuelj/iptv-proxy:v{{ .Major }}.{{ .Minor }}-ffmpeg-arm64"
+  - name_template: "ghcr.io/pierre-emmanuelj/iptv-proxy:latest-ffmpeg"
+    image_templates:
+      - "ghcr.io/pierre-emmanuelj/iptv-proxy:latest-ffmpeg-amd64"
+      - "ghcr.io/pierre-emmanuelj/iptv-proxy:latest-ffmpeg-arm64"
