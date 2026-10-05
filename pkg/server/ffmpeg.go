@@ -53,6 +53,7 @@ const tsBytes = 2 * 188
 // setupFFmpeg finds the ffmpeg to use. The default, "ffmpeg", is used when
 // it is found; another one must be.
 func (c *Config) setupFFmpeg() error {
+	c.ffmpegWait = ffmpegStart
 	if c.FFmpeg == "" || c.FFmpeg == "none" {
 		return nil
 	}
@@ -67,8 +68,8 @@ func (c *Config) setupFFmpeg() error {
 }
 
 // remuxHLS turns an HLS playlist the provider answered into MPEG-TS, read
-// by ffmpeg. Any other answer is passed on as it is. On an error, the
-// provider's answer is closed.
+// by ffmpeg, which asks for the playlist itself. Any other answer is passed
+// on as it is.
 func (c *Config) remuxHLS(ctx context.Context, resp *http.Response, header http.Header) (*http.Response, error) {
 	body := bufio.NewReader(resp.Body)
 	begin, _ := body.Peek(64)
@@ -76,36 +77,23 @@ func (c *Config) remuxHLS(ctx context.Context, resp *http.Response, header http.
 		resp.Body = peeked{body, resp.Body}
 		return resp, nil
 	}
+	_ = resp.Body.Close()
 	stream, err := c.ffmpegTS(ctx, resp.Request.URL.String(), header.Get("User-Agent"))
 	if err != nil {
-		_ = resp.Body.Close()
 		return nil, err
 	}
 	return &http.Response{
 		StatusCode:    http.StatusOK,
 		Header:        http.Header{"Content-Type": {"video/mp2t"}},
 		ContentLength: -1,
-		// the playlist's answer is closed with the stream: a source keeps
-		// counting it as open
-		Body:    &both{ReadCloser: stream, also: resp.Body},
-		Request: resp.Request,
+		Body:          stream,
+		Request:       resp.Request,
 	}, nil
 }
 
 type peeked struct {
 	io.Reader
 	io.Closer
-}
-
-type both struct {
-	io.ReadCloser
-	also io.Closer
-}
-
-func (b *both) Close() error {
-	err := b.ReadCloser.Close()
-	_ = b.also.Close()
-	return err
 }
 
 // ffmpegTS starts ffmpeg on an HLS address and returns its MPEG-TS once it
@@ -142,7 +130,7 @@ func (c *Config) ffmpegTS(ctx context.Context, address, userAgent string) (io.Re
 		n, err := io.ReadAtLeast(stdout, first, tsBytes)
 		started <- read{n, err}
 	}()
-	timer := time.NewTimer(ffmpegStart)
+	timer := time.NewTimer(c.ffmpegWait)
 	defer timer.Stop()
 	select {
 	case r := <-started:
@@ -154,7 +142,7 @@ func (c *Config) ffmpegTS(ctx context.Context, address, userAgent string) (io.Re
 		return s, nil
 	case <-timer.C:
 		s.stop()
-		return nil, fmt.Errorf("ffmpeg gave no stream within %s", ffmpegStart)
+		return nil, fmt.Errorf("ffmpeg gave no stream within %s", c.ffmpegWait)
 	}
 }
 

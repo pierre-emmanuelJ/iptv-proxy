@@ -105,8 +105,10 @@ type Config struct {
 
 	// tuner is the HDHomeRun tuner's state.
 	tuner tuner
-	// ffmpeg is the path of the ffmpeg the tuner remuxes HLS with, or "".
-	ffmpeg string
+	// ffmpeg is the path of the ffmpeg the tuner remuxes HLS with, or "";
+	// ffmpegWait how long it may take to give its first bytes.
+	ffmpeg     string
+	ffmpegWait time.Duration
 
 	// users are the proxy's users, the first one first.
 	users       []*proxyUser

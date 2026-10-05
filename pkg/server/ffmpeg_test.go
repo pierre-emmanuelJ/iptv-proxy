@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -23,9 +24,12 @@ func withHLS(t *testing.T, p *provider) string {
 		t.Skip("ffmpeg not found")
 	}
 	dir := t.TempDir()
+	// a channel with two languages: two audio tracks
 	out, err := exec.Command(ffmpeg, "-hide_banner", "-loglevel", "error",
 		"-f", "lavfi", "-i", "testsrc=duration=4:size=96x64:rate=10",
-		"-f", "lavfi", "-i", "sine=duration=4",
+		"-f", "lavfi", "-i", "sine=duration=4:frequency=440",
+		"-f", "lavfi", "-i", "sine=duration=4:frequency=880",
+		"-map", "0:v", "-map", "1:a", "-map", "2:a",
 		"-c:v", "mpeg2video", "-c:a", "mp2",
 		"-f", "hls", "-hls_time", "1", "-hls_list_size", "0", filepath.Join(dir, "index.m3u8")).CombinedOutput()
 	if err != nil {
@@ -51,14 +55,49 @@ func withHLS(t *testing.T, p *provider) string {
 // readTS reads the start of a stream and tells whether it is MPEG-TS.
 func readTS(t *testing.T, address string) (int, bool) {
 	t.Helper()
+	status, begin := readStart(t, address, 10*188)
+	return status, len(begin) == 10*188 && begin[0] == 0x47 && begin[188] == 0x47 && begin[9*188] == 0x47
+}
+
+func readStart(t *testing.T, address string, size int) (int, []byte) {
+	t.Helper()
 	resp, err := http.Get(address)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close() // nolint: errcheck
-	begin := make([]byte, 10*188)
+	begin := make([]byte, size)
 	n, _ := io.ReadFull(resp.Body, begin)
-	return resp.StatusCode, n == len(begin) && begin[0] == 0x47 && begin[188] == 0x47 && begin[9*188] == 0x47
+	return resp.StatusCode, begin[:n]
+}
+
+// streamsOf lists the kinds of the streams of an MPEG-TS start, by ffprobe.
+func streamsOf(t *testing.T, ts []byte) string {
+	t.Helper()
+	ffprobe, err := exec.LookPath("ffprobe")
+	if err != nil {
+		t.Skip("ffprobe not found")
+	}
+	file := filepath.Join(t.TempDir(), "start.ts")
+	if err := os.WriteFile(file, ts, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// streams are listed by program too: once each, in their order
+	out, err := exec.Command(ffprobe, "-v", "error", "-show_entries", "stream=index,codec_type", "-of", "csv=p=0", file).Output()
+	if err != nil {
+		t.Fatalf("ffprobe: %v", err)
+	}
+	kinds := map[string]string{}
+	for _, line := range strings.Fields(string(out)) {
+		if index, kind, ok := strings.Cut(line, ","); ok {
+			kinds[index] = strings.TrimRight(kind, ",") // a video line ends with one
+		}
+	}
+	var list []string
+	for i := range len(kinds) {
+		list = append(list, kinds[strconv.Itoa(i)])
+	}
+	return strings.Join(list, ",")
 }
 
 func m3uTuner(t *testing.T, p *provider, list, ffmpeg string) string {
@@ -88,6 +127,18 @@ func TestTunerRemuxesHLS(t *testing.T) {
 	if status, ts := readTS(t, tuner+"/auto/v1"); status != http.StatusOK || !ts {
 		t.Errorf("status %d, MPEG-TS %v", status, ts)
 	}
+	// every track is kept: the video and both languages
+	if _, start := readStart(t, tuner+"/auto/v1", 64<<10); streamsOf(t, start) != "video,audio,audio" {
+		t.Errorf("streams: %q", streamsOf(t, start))
+	}
+	// ffmpeg asks as the proxy does, not as itself
+	p.mu.Lock()
+	for _, agent := range p.userAgents {
+		if strings.HasPrefix(agent, "Lavf") {
+			t.Errorf("ffmpeg's own user agent reached the provider: %q", agent)
+		}
+	}
+	p.mu.Unlock()
 	if p.count("/hlsfiles/broken.m3u8") == 0 || p.count("/hlsfiles/index0.ts") == 0 {
 		t.Errorf("ffmpeg did not read the playlists: broken %d, index segment %d", p.count("/hlsfiles/broken.m3u8"), p.count("/hlsfiles/index0.ts"))
 	}
@@ -181,6 +232,15 @@ func TestFFmpegSetting(t *testing.T) {
 	c = &Config{ProxyConfig: &config.ProxyConfig{FFmpeg: "ffmpeg"}}
 	if err := c.setupFFmpeg(); err != nil || c.ffmpeg != "" {
 		t.Errorf("default without ffmpeg: %q, %v", c.ffmpeg, err)
+	}
+}
+
+func TestLastLines(t *testing.T) {
+	var l lastLines
+	_, _ = l.Write([]byte(strings.Repeat("a", keptBytes)))
+	_, _ = l.Write([]byte("the end"))
+	if got := l.String(); len(got) != keptBytes || !strings.HasSuffix(got, "athe end") {
+		t.Errorf("%d bytes, ending %q", len(got), got[len(got)-10:])
 	}
 }
 
