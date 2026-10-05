@@ -1,5 +1,18 @@
 # Changelog
 
+## 4.6.0
+
+### Added
+
+- **Channel logos in Plex's guide.** Plex's apps are served over HTTPS and
+  refuse a logo at a plain `http://` address, which many providers have
+  only: the guide showed no logos. When the proxy's own address is HTTPS,
+  the tuner's guide now gives those logos through the proxy
+  (`/logo/<token>/<name>`, as `--proxy-logos` does for players).
+- **`--proxy-logos` covers the guides too**: the images of `xmltv.php` (and
+  of an M3U playlist's guide) and of the tuner's guide come through the
+  proxy.
+
 ## 4.5.0
 
 ### Changed

@@ -351,7 +351,7 @@ func (c *Config) xtreamXMLTV(ctx *gin.Context) {
 			return keeping(kept), err
 		}
 	}
-	c.guide(ctx, u.provider.APIURL("xmltv.php", ctx.Request.Form), userAnswerKey(u, "guide", ctx.Request.Form), mapping, c.otherGuides(ctx.Request.Form))
+	c.guide(ctx, u.provider.APIURL("xmltv.php", ctx.Request.Form), userAnswerKey(u, "guide", ctx.Request.Form), mapping, c.otherGuides(ctx.Request.Form), c.guideIcons(false))
 }
 
 // xtreamProviderStream serves "<prefix><user>/<password>/<rest>" of the

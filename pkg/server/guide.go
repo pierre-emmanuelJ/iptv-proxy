@@ -50,10 +50,10 @@ func keeping(kept map[string]bool) channelMap {
 // guide sends a guide (XMLTV) as it comes from address: it can weigh
 // hundreds of megabytes. When mapping is given, the channels are sent as the
 // map it returns says, with their programmes. The channels of the guides at
-// others that address does not have are added to it (several sources). A
-// guide sent in full is kept under key, compressed, for when the provider
-// fails.
-func (c *Config) guide(ctx *gin.Context, address, key string, mapping func() (channelMap, error), others []string) {
+// others that address does not have are added to it (several sources). With
+// icon, its images get the addresses icon gives (see guideIcons). A guide
+// sent in full is kept under key, compressed, for when the provider fails.
+func (c *Config) guide(ctx *gin.Context, address, key string, mapping func() (channelMap, error), others []string, icon func(string) string) {
 	var channels channelMap
 	if mapping != nil {
 		var err error
@@ -65,7 +65,11 @@ func (c *Config) guide(ctx *gin.Context, address, key string, mapping func() (ch
 		}
 	}
 
-	if len(others) > 0 && channels == nil {
+	var options []xmltv.Option
+	if icon != nil {
+		options = append(options, xmltv.Icons(icon))
+	}
+	if (len(others) > 0 || icon != nil) && channels == nil {
 		channels = func(channel string) []string { return []string{channel} }
 	}
 
@@ -129,14 +133,14 @@ func (c *Config) guide(ctx *gin.Context, address, key string, mapping func() (ch
 		}
 		err = xmltv.Merge(out, src, first, func(w io.Writer) error {
 			for _, other := range others {
-				if !c.addGuide(ctx, w, other, channels, seen) {
+				if !c.addGuide(ctx, w, other, channels, seen, options) {
 					keep = false // incomplete
 				}
 			}
 			return nil
-		})
+		}, options...)
 	case channels != nil:
-		err = xmltv.Map(out, src, channels)
+		err = xmltv.Map(out, src, channels, options...)
 	default:
 		_, err = io.Copy(out, src)
 	}
@@ -164,7 +168,7 @@ func unzipped(body *bufio.Reader, header http.Header) (io.Reader, bool, error) {
 // addGuide writes the channels of the guide at address that are not seen
 // yet, as channels maps them, with their programmes. It tells whether the
 // guide was read in full.
-func (c *Config) addGuide(ctx *gin.Context, w io.Writer, address string, channels channelMap, seen map[string]bool) bool {
+func (c *Config) addGuide(ctx *gin.Context, w io.Writer, address string, channels channelMap, seen map[string]bool, options []xmltv.Option) bool {
 	resp, err := c.openGuide(ctx, address)
 	if err != nil {
 		log.Printf("[iptv-proxy] guide of another source: %v", err)
@@ -187,7 +191,7 @@ func (c *Config) addGuide(ctx *gin.Context, w io.Writer, address string, channel
 		}
 		added[channel] = true
 		return channels(channel)
-	})
+	}, options...)
 	for channel := range added {
 		seen[channel] = true
 	}

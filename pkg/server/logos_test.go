@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -104,4 +105,56 @@ func TestLogoAddress(t *testing.T) {
 	if got := c.logoAddress("https://img.example/"); !strings.HasSuffix(got, "/logo") {
 		t.Errorf("an address without a file name: %q", got)
 	}
+}
+
+// The tuner's guide gives its plain http images through the proxy when the
+// proxy's address is HTTPS: Plex shows them in apps served over HTTPS, which
+// refuse an http image.
+func TestTunerGuideIcons(t *testing.T) {
+	p := newProvider(t)
+	p.icons.Store(true)
+	var c *Config
+	tuner := tunerOf(t, p, func(conf *config.ProxyConfig) {
+		conf.HTTPS = true
+		c, _ = NewServer(conf)
+	})
+	_, guide := get(t, tuner+"/guide.xml")
+	logo := c.logoAddress(p.cdn.URL + "/img/one.png?a=1&b=2")
+	if !strings.HasPrefix(logo, "https://proxy.example:8080/logo/") || !strings.Contains(guide, `<icon src="`+logo+`" />`) || strings.Contains(guide, p.cdn.URL) {
+		t.Errorf("guide:\n%s", guide)
+	}
+	// the proxy serves it, with no login, as the media server's apps ask
+	players := httptest.NewServer(c.Handler())
+	t.Cleanup(players.Close)
+	if resp, image := get(t, players.URL+strings.TrimPrefix(logo, "https://proxy.example:8080")); resp.StatusCode != http.StatusOK || image != "jpeg:one.png" {
+		t.Errorf("logo: status %d, %q", resp.StatusCode, image)
+	}
+
+	// an http address of the proxy: the images stay the provider's
+	if _, plain := get(t, tunerOf(t, p, nil)+"/guide.xml"); !strings.Contains(plain, `<icon src="`+p.cdn.URL+`/img/one.png?a=1&amp;b=2" />`) {
+		t.Errorf("guide of an http proxy:\n%s", plain)
+	}
+	// players' guides do not change without --proxy-logos
+	if _, players := get(t, proxy(t, p, func(conf *config.ProxyConfig) { conf.HTTPS = true })+"/xmltv.php?"+creds); !strings.Contains(players, p.cdn.URL+"/img/one.png") {
+		t.Errorf("players' guide:\n%s", players)
+	}
+}
+
+// With --proxy-logos, every image of a guide comes through the proxy.
+func TestGuideIconsThroughTheProxy(t *testing.T) {
+	p := newProvider(t)
+	p.icons.Store(true)
+	base := proxy(t, p, proxyLogos)
+	_, guide := get(t, base+"/xmltv.php?"+creds)
+	if strings.Contains(guide, p.cdn.URL) || strings.Contains(guide, "pictures.example") || strings.Count(guide, `src="http://proxy.example:8080/logo/`)+strings.Count(guide, `src='http://proxy.example:8080/logo/`) != 2 {
+		t.Errorf("guide:\n%s", guide)
+	}
+	if !strings.Contains(guide, "<title>Match</title>") {
+		t.Errorf("the rest of the guide changed:\n%s", guide)
+	}
+	_, tunerGuide := get(t, tunerOf(t, p, proxyLogos)+"/guide.xml")
+	if strings.Contains(tunerGuide, p.cdn.URL) || !strings.Contains(tunerGuide, `src="http://proxy.example:8080/logo/`) {
+		t.Errorf("tuner guide:\n%s", tunerGuide)
+	}
+	noProviderCredentials(t, "guide", guide)
 }

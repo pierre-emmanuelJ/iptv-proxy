@@ -215,3 +215,45 @@ func TestMerge(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestIcons(t *testing.T) {
+	doc := `<tv>
+  <channel id="a"><display-name>A</display-name><icon src="http://img/a.png?x=1&amp;y=2" /></channel>
+  <channel id="b"><icon width="1" src='http://img/same.png'/><icon src="http://img/b.png"/></channel>
+  <programme start="1" channel="a"><title>T</title><icon src="http://img/p.jpg"/></programme>
+  <programme start="2" channel="b"><title>&lt;icon src="http://not/an/icon"&gt;</title></programme>
+</tv>`
+	var asked []string
+	icon := func(address string) string {
+		asked = append(asked, address)
+		if strings.HasSuffix(address, "same.png") {
+			return address
+		}
+		return "https://proxy/" + strings.TrimPrefix(address, "http://") + "&'"
+	}
+	var out bytes.Buffer
+	if err := Map(&out, strings.NewReader(doc), func(c string) []string { return []string{c} }, Icons(icon)); err != nil {
+		t.Fatal(err)
+	}
+	want := `<tv>
+  <channel id="a"><display-name>A</display-name><icon src="https://proxy/img/a.png?x=1&amp;y=2&amp;&#39;" /></channel>
+  <channel id="b"><icon width="1" src='http://img/same.png'/><icon src="https://proxy/img/b.png&amp;&#39;"/></channel>
+  <programme start="1" channel="a"><title>T</title><icon src="https://proxy/img/p.jpg&amp;&#39;"/></programme>
+  <programme start="2" channel="b"><title>&lt;icon src="http://not/an/icon"&gt;</title></programme>
+</tv>`
+	if out.String() != want {
+		t.Errorf("got:\n%s\nwant:\n%s", out.String(), want)
+	}
+	if strings.Join(asked, " ") != "http://img/a.png?x=1&y=2 http://img/same.png http://img/b.png http://img/p.jpg" {
+		t.Errorf("asked: %q", asked)
+	}
+
+	// the other guides' elements too
+	out.Reset()
+	if err := Elements(&out, strings.NewReader(doc), func(c string) []string { return []string{c} }, Icons(func(string) string { return "x" })); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(out.String(), `src="x"`)+strings.Count(out.String(), `src='x'`) != 4 {
+		t.Errorf("elements:\n%s", out.String())
+	}
+}

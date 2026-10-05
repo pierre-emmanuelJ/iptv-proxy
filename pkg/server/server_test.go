@@ -66,6 +66,8 @@ type provider struct {
 	revoked atomic.Bool
 	// liveDown makes live channel 1 of the first account fail.
 	liveDown atomic.Bool
+	// icons gives the guide images: a logo over http, a picture over https.
+	icons atomic.Bool
 }
 
 func (p *provider) hit(r *http.Request) {
@@ -331,6 +333,13 @@ func newProvider(t *testing.T) *provider {
 			fmt.Fprint(w, strings.Replace(providerGuide, "</tv>", `  <channel id="local.fr"><display-name>Local</display-name></channel>
   <programme start="20251002200000 +0200" channel="local.fr"><title>Local news</title></programme>
 </tv>`, 1))
+			return
+		}
+		if p.icons.Load() {
+			fmt.Fprint(w, strings.NewReplacer(
+				`<display-name>One</display-name>`, `<display-name>One</display-name><icon src="`+p.cdn.URL+`/img/one.png?a=1&amp;b=2" />`,
+				`<title>Match</title>`, `<title>Match</title><icon src='https://pictures.example/match.jpg'/>`,
+			).Replace(providerGuide))
 			return
 		}
 		fmt.Fprint(w, providerGuide)

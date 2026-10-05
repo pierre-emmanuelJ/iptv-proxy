@@ -188,7 +188,7 @@ wins over the variable, and the variable over the file.
 | `--user-agent` | `USER_AGENT` | | User-Agent sent to the provider instead of the player's. Some providers only answer known players. |
 | `--no-stream-sharing` | `NO_STREAM_SHARING` | `false` | Open one provider connection per player for a live stream, instead of sharing one between the players watching it. |
 | `--status-password` | `STATUS_PASSWORD` | | Password of a read-only status page at `/status`. See [Status page](#status-page). |
-| `--proxy-logos` | `PROXY_LOGOS` | `false` | Serve the logos and covers of playlists and of the Xtream API through the proxy too, so that players reach no other host. |
+| `--proxy-logos` | `PROXY_LOGOS` | `false` | Serve the logos and covers of playlists, of the Xtream API and of the guides through the proxy too, so that players reach no other host. |
 | `--hdhomerun-port` | `HDHOMERUN_PORT` | | Port of an HDHomeRun tuner for Plex, Emby, Jellyfin or Channels DVR. Local network only. See [Plex and other media servers](#plex-and-other-media-servers). |
 | `--hdhomerun-group-regex`, `--hdhomerun-channel-regex`, `--hdhomerun-group-exclude-regex`, `--hdhomerun-channel-exclude-regex` | `HDHOMERUN_GROUP_REGEX`... | | Filters of the tuner alone, applied after the proxy's: the media server gets fewer channels than your players. |
 | `--hdhomerun-tuners` | `HDHOMERUN_TUNERS` | the account's connections, else `2` | Number of tuners announced: how many channels a media server plays at once. |
@@ -491,6 +491,11 @@ When Plex asks for the guide, choose the XMLTV option and give
   place in the playlist.
 - The guide at `/guide.xml` names each channel by its tuner number, which is
   how media servers match a guide to channels.
+- **Channel logos in Plex.** Plex's apps are served over HTTPS and refuse a
+  logo at a plain `http://` address; many providers have only those. When
+  the proxy's own address is HTTPS (`--https`), the tuner's guide gives such
+  logos through the proxy, which fetches them. With `--proxy-logos`, all of
+  them come through it.
 - The tuner announces as many tuners as your Xtream account allows
   connections (`--hdhomerun-tuners` to change it): a media server never
   opens more streams than that.
