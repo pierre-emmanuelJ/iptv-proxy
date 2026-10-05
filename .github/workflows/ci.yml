@@ -8,14 +8,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-go@v5
+    - uses: actions/checkout@v7
+    - uses: actions/setup-go@v7
       with:
         go-version-file: go.mod
     - name: Formatting
       run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
     - name: Lint
-      uses: golangci/golangci-lint-action@v8
+      uses: golangci/golangci-lint-action@v9
       with:
         version: latest
     - name: ffmpeg, for the tests of the tuner's HLS channels
@@ -40,7 +40,7 @@ jobs:
   docker-build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Build the Docker image
       run: docker build . --file Dockerfile --tag iptv-proxy:ci-build
     - name: Build the image with ffmpeg
