@@ -360,8 +360,9 @@ func (c *Config) tunerGuide(ctx *gin.Context) {
 }
 
 // tunerCount is the number of tuners announced: --hdhomerun-tuners, else the
-// connections the Xtream account allows, else 2. A media server does not
-// open more streams at once than it has tuners.
+// connections the Xtream account allows (with several sources, theirs
+// together), else 2. A media server does not open more streams at once than
+// it has tuners.
 func (c *Config) tunerCount(ctx *gin.Context) int {
 	if c.HDHomeRunTuners > 0 {
 		return c.HDHomeRunTuners
@@ -400,6 +401,13 @@ func (c *Config) tunerAccount(ctx *gin.Context) (count int, hlsOnly bool) {
 				}
 				hlsOnly = formats["m3u8"] && !formats["ts"]
 			}
+		}
+	}
+	if c.merged() {
+		// each source's connections, one for a source that does not say
+		count = 0
+		for _, src := range c.sources {
+			count += max(c.sourceLimit(ctx, src), 1)
 		}
 	}
 	c.tuner.mu.Lock()

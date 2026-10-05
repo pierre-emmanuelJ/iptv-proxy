@@ -585,6 +585,15 @@ func (c *Config) sourceFull(ctx context.Context, src *source) bool {
 	if src == nil {
 		return false
 	}
+	limit := c.sourceLimit(ctx, src)
+	src.mu.Lock()
+	defer src.mu.Unlock()
+	return limit > 0 && src.opened >= limit
+}
+
+// sourceLimit is how many streams of a source the proxy opens at once: its
+// max-connections, else what its account allows; 0 for no limit known.
+func (c *Config) sourceLimit(ctx context.Context, src *source) int {
 	src.mu.Lock()
 	defer src.mu.Unlock()
 	if !src.asked {
@@ -594,7 +603,7 @@ func (c *Config) sourceFull(ctx context.Context, src *source) bool {
 			src.limit = c.accountLimit(ctx, src.account)
 		}
 	}
-	return src.limit > 0 && src.opened >= src.limit
+	return src.limit
 }
 
 // accountLimit asks the provider how many streams at once an account allows;
