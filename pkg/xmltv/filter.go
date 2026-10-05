@@ -158,7 +158,7 @@ func copyGuide(dst io.Writer, src io.Reader, ids func(channel string) []string, 
 			var startTag int
 			element, startTag, err = readElement(r, name)
 			if err == nil && how.icon != nil {
-				element = withIcons(element, startTag, how.icon)
+				element = withIcons(element, how.icon)
 			}
 			if err == nil {
 				to := ids(channelOf(element[:startTag], name))
@@ -227,29 +227,27 @@ func writeAs(w *bufio.Writer, element []byte, startTag int, name, id string) err
 	return err
 }
 
-// withIcons gives the images inside an element, after its start tag, the
-// addresses icon returns.
-func withIcons(element []byte, startTag int, icon func(string) string) []byte {
-	content := element[startTag:]
-	found := iconSource.FindAllSubmatchIndex(content, -1)
+// withIcons gives the images of an element the addresses icon returns.
+func withIcons(element []byte, icon func(string) string) []byte {
+	found := iconSource.FindAllSubmatchIndex(element, -1)
 	if found == nil {
 		return element
 	}
-	out := append([]byte{}, element[:startTag]...)
+	var out []byte
 	done := 0
 	for _, m := range found {
 		start, end := m[2], m[3]
 		if start < 0 {
 			start, end = m[4], m[5]
 		}
-		address := html.UnescapeString(string(content[start:end]))
+		address := html.UnescapeString(string(element[start:end]))
 		if to := icon(address); to != address {
-			out = append(out, content[done:start]...)
+			out = append(out, element[done:start]...)
 			out = append(out, html.EscapeString(to)...)
 			done = end
 		}
 	}
-	return append(out, content[done:]...)
+	return append(out, element[done:]...)
 }
 
 // tagName returns the name of the filtered element the reader is in, without

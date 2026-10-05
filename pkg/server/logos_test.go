@@ -149,12 +149,32 @@ func TestGuideIconsThroughTheProxy(t *testing.T) {
 	if strings.Contains(guide, p.cdn.URL) || strings.Contains(guide, "pictures.example") || strings.Count(guide, `src="http://proxy.example:8080/logo/`)+strings.Count(guide, `src='http://proxy.example:8080/logo/`) != 2 {
 		t.Errorf("guide:\n%s", guide)
 	}
-	if !strings.Contains(guide, "<title>Match</title>") {
-		t.Errorf("the rest of the guide changed:\n%s", guide)
+	if !strings.Contains(guide, "<title>Match</title>") || !strings.Contains(guide, `<icon src="data:image/png;base64,AAAA"/>`) {
+		t.Errorf("the rest of the guide changed (an inlined image stays):\n%s", guide)
 	}
 	_, tunerGuide := get(t, tunerOf(t, p, proxyLogos)+"/guide.xml")
 	if strings.Contains(tunerGuide, p.cdn.URL) || !strings.Contains(tunerGuide, `src="http://proxy.example:8080/logo/`) {
 		t.Errorf("tuner guide:\n%s", tunerGuide)
 	}
 	noProviderCredentials(t, "guide", guide)
+}
+
+// The guides of every source, and an M3U playlist's guide, give their images
+// through the proxy too.
+func TestGuideIconsOfSourcesAndPlaylists(t *testing.T) {
+	p, q := newProvider(t), newProvider(t)
+	p.icons.Store(true)
+	q.icons.Store(true)
+	_, merged := get(t, proxy(t, p, func(c *config.ProxyConfig) {
+		withSource(q)(c)
+		c.ProxyLogos = true
+	})+"/xmltv.php?"+creds)
+	if !strings.Contains(merged, `<channel id="local.fr">`) || strings.Contains(merged, p.cdn.URL) || strings.Contains(merged, q.cdn.URL) {
+		t.Errorf("guide of two sources:\n%s", merged)
+	}
+
+	_, m3u := get(t, m3uProxy(t, p, proxyLogos)+"/xmltv.php?"+creds)
+	if !strings.Contains(m3u, `<channel id="one.fr">`) || strings.Contains(m3u, p.cdn.URL) || !strings.Contains(m3u, `src="http://proxy.example:8080/logo/`) {
+		t.Errorf("guide of an M3U playlist:\n%s", m3u)
+	}
 }

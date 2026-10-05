@@ -78,6 +78,19 @@ func (p *provider) hit(r *http.Request) {
 	p.queries[r.URL.Path] = r.URL.RawQuery
 }
 
+// guide is the provider's guide, with images when icons is set: a logo over
+// http, a picture over https, one inlined.
+func (p *provider) guide() string {
+	if !p.icons.Load() {
+		return providerGuide
+	}
+	return strings.NewReplacer(
+		`<display-name>One</display-name>`, `<display-name>One</display-name><icon src="`+p.cdn.URL+`/img/one.png?a=1&amp;b=2" />`,
+		`<display-name>Sport</display-name>`, `<display-name>Sport</display-name><icon src="data:image/png;base64,AAAA"/>`,
+		`<title>Match</title>`, `<title>Match</title><icon src='https://pictures.example/match.jpg'/>`,
+	).Replace(providerGuide)
+}
+
 func (p *provider) count(path string) int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -330,19 +343,16 @@ func newProvider(t *testing.T) *provider {
 		w.Header().Set("Content-Type", "text/xml")
 		if r.URL.Query().Get("username") == x2User {
 			// the second account's package has a channel of its own
-			fmt.Fprint(w, strings.Replace(providerGuide, "</tv>", `  <channel id="local.fr"><display-name>Local</display-name></channel>
+			icon := ""
+			if p.icons.Load() {
+				icon = `<icon src="` + p.cdn.URL + `/img/local.png"/>`
+			}
+			fmt.Fprint(w, strings.Replace(p.guide(), "</tv>", `  <channel id="local.fr"><display-name>Local</display-name>`+icon+`</channel>
   <programme start="20251002200000 +0200" channel="local.fr"><title>Local news</title></programme>
 </tv>`, 1))
 			return
 		}
-		if p.icons.Load() {
-			fmt.Fprint(w, strings.NewReplacer(
-				`<display-name>One</display-name>`, `<display-name>One</display-name><icon src="`+p.cdn.URL+`/img/one.png?a=1&amp;b=2" />`,
-				`<title>Match</title>`, `<title>Match</title><icon src='https://pictures.example/match.jpg'/>`,
-			).Replace(providerGuide))
-			return
-		}
-		fmt.Fprint(w, providerGuide)
+		fmt.Fprint(w, p.guide())
 	})
 
 	mux.HandleFunc("/live/xuser/xpass/1.ts", func(w http.ResponseWriter, r *http.Request) {
@@ -510,7 +520,7 @@ func newProvider(t *testing.T) *provider {
 			return
 		}
 		w.Header().Set("Content-Type", "text/xml")
-		fmt.Fprint(w, providerGuide)
+		fmt.Fprint(w, p.guide())
 	})
 	mux.HandleFunc("/redirected/c.m3u8", func(w http.ResponseWriter, r *http.Request) {
 		p.hit(r)
