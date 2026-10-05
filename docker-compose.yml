@@ -1,33 +1,25 @@
-version: "3"
+# The image built from these sources, with an Xtream Codes account.
+# For the published image, see the README (Quick start).
 services:
   iptv-proxy:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      # If your are using local m3u file instead of m3u remote file
-      # put your m3u file in this folder
-      - ./iptv:/root/iptv
-    container_name: "iptv-proxy"
-    restart: on-failure
+    build: .
+    container_name: iptv-proxy
+    restart: unless-stopped
     ports:
-       # have to be the same as ENV variable PORT
+      # the same port as PORT below
       - 8080:8080
     environment:
-      # if you are using m3u remote file
-      # M3U_URL: https://example.com/iptvfile.m3u
-      M3U_URL: /root/iptv/iptv.m3u
-      # Port to expose the IPTVs endpoints
-      PORT: 8080
-      # Hostname or IP to expose the IPTVs endpoints (for machine not for docker)
-      PROXY_HOSTNAME: localhost
-      GIN_MODE: release
-      ## Xtream-code proxy configuration
+      # An Xtream Codes account...
+      XTREAM_BASE_URL: "http://provider.example:8080"
       XTREAM_USER: xtream_user
       XTREAM_PASSWORD: xtream_password
-      XTREAM_BASE_URL: "http://example.tv:8080"
-      ##### UNSAFE AUTH TODO ADD REAL AUTH
-      #will be used for m3u and xtream auth poxy
-      PROXY_USER: test
-      PROXY_PASSWORD: testpassword
-
+      # ...or an M3U playlist instead (an address, or a file in ./iptv):
+      # M3U_URL: /iptv/iptv.m3u
+      PORT: 8080
+      # Name or IP your players reach this machine at
+      PROXY_HOSTNAME: 192.168.1.10
+      # What your players log in with: change both
+      PROXY_USER: family
+      PROXY_PASSWORD: choose-a-password
+    # volumes:
+    #   - ./iptv:/iptv:ro
