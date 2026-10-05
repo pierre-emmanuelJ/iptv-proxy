@@ -3,6 +3,26 @@
 FROM --platform=$BUILDPLATFORM alpine:3 AS certs
 RUN apk add --no-cache ca-certificates
 
+# ffmpeg, for the -ffmpeg images: installed for the image's architecture
+# from the build machine's, for the same reason.
+FROM --platform=$BUILDPLATFORM alpine:3 AS ffmpeg-files
+ARG TARGETARCH
+RUN case "$TARGETARCH" in \
+      amd64) arch=x86_64 ;; \
+      arm64) arch=aarch64 ;; \
+      *) echo "no ffmpeg image for $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+ && apk add --no-cache --no-scripts --initdb --root /files --arch "$arch" \
+      --keys-dir "/usr/share/apk/keys/$arch" --repositories-file /etc/apk/repositories \
+      ffmpeg
+
+FROM alpine:3 AS ffmpeg
+COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=ffmpeg-files /files/usr /usr
+COPY --from=ffmpeg-files /files/lib /lib
+COPY iptv-proxy /
+ENTRYPOINT ["/iptv-proxy"]
+
 FROM alpine:3
 COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY iptv-proxy /

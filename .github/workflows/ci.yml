@@ -18,6 +18,8 @@ jobs:
       uses: golangci/golangci-lint-action@v8
       with:
         version: latest
+    - name: ffmpeg, for the tests of the tuner's HLS channels
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
     - name: Tests
       run: go test -race -count=1 -coverprofile=coverage.out ./...
     - name: Coverage of the packages
@@ -41,3 +43,7 @@ jobs:
     - uses: actions/checkout@v4
     - name: Build the Docker image
       run: docker build . --file Dockerfile --tag iptv-proxy:ci-build
+    - name: Build the image with ffmpeg
+      run: |
+        docker build . --file Dockerfile --target ffmpeg --tag iptv-proxy:ci-build-ffmpeg
+        docker run --rm --entrypoint ffmpeg iptv-proxy:ci-build-ffmpeg -hide_banner -version
