@@ -59,6 +59,9 @@ type tunerChannel struct {
 	GuideID string
 	// source is the provider's stream id (Xtream) or address (M3U).
 	source string
+	// others are the sources of the provider's other channels with the same
+	// guide id (another quality, a backup), tried in turn when source fails.
+	others []string
 }
 
 // tuner is what the tuner remembers between requests.
@@ -174,6 +177,7 @@ func (c *Config) tunerChannels(ctx *gin.Context) ([]tunerChannel, error) {
 			return nil, err
 		}
 	}
+	channels = oneByGuide(channels)
 
 	byNumber := make(map[string]tunerChannel, len(channels))
 	for _, ch := range channels {
@@ -216,6 +220,26 @@ func (c *Config) xtreamTunerChannels(ctx *gin.Context) ([]tunerChannel, error) {
 		})
 	}
 	return channels, nil
+}
+
+// oneByGuide keeps one channel per guide id, the first: the others with that
+// id (another quality, a backup) become its fallbacks. A media server maps
+// every channel to the guide, and Plex takes no more than about 400 of them
+// for a tuner. Channels without a guide id are all kept.
+func oneByGuide(channels []tunerChannel) []tunerChannel {
+	kept := make([]tunerChannel, 0, len(channels))
+	at := map[string]int{}
+	for _, ch := range channels {
+		if ch.GuideID != "" {
+			if i, seen := at[ch.GuideID]; seen {
+				kept[i].others = append(kept[i].others, ch.source)
+				continue
+			}
+			at[ch.GuideID] = len(kept)
+		}
+		kept = append(kept, ch)
+	}
+	return kept
 }
 
 // m3uTunerChannels lists the live tracks of a playlist: those that are not
@@ -274,17 +298,27 @@ func (c *Config) tunerStream(ctx *gin.Context) {
 		return
 	}
 
-	if c.servesM3U() {
-		address, err := url.Parse(ch.source)
-		if err != nil {
-			ctx.AbortWithStatus(http.StatusNotFound)
-			return
+	candidates := c.tunerCandidates(ctx, ch)
+	c.streamLiveFrom(ctx, candidates[0].url, c.openFirst(candidates))
+}
+
+// tunerCandidates are where a channel can be read: its own stream, then the
+// provider's other channels with its guide id, in the order of the list.
+func (c *Config) tunerCandidates(ctx *gin.Context, ch tunerChannel) []candidate {
+	var candidates []candidate
+	for i, s := range append([]string{ch.source}, ch.others...) {
+		switch {
+		case c.servesM3U():
+			// a track's address may hold credentials: not in the logs
+			candidates = append(candidates, candidate{url: s, name: "address " + strconv.Itoa(i+1) + " of " + ch.Name})
+		case c.merged():
+			// a tuner sends MPEG-TS; the channel's other sources come along
+			candidates = append(candidates, c.streamCandidates(ctx, "live/", url.PathEscape(s)+".ts", true)...)
+		default:
+			candidates = append(candidates, candidate{url: c.accountOf(ctx).StreamURL("live/", url.PathEscape(s)+".ts"), name: "stream " + s})
 		}
-		c.streamLive(ctx, address)
-		return
 	}
-	// a tuner sends MPEG-TS
-	c.xtreamProviderStream(ctx, "live/", url.PathEscape(ch.source)+".ts", true)
+	return candidates
 }
 
 // tunerGuide serves the guide with each channel under its tuner number, as

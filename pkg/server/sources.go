@@ -108,10 +108,12 @@ type sourceEntry struct {
 	id  string
 }
 
-// candidate is a source's address of a stream.
+// candidate is an address of a stream: at a source, or at the provider when
+// the proxy has a single one (src nil). name tells it apart in the logs.
 type candidate struct {
-	src *source
-	url string
+	src  *source
+	url  string
+	name string
 }
 
 func sourceKey(src int, id string) string {
@@ -506,12 +508,12 @@ func (c *Config) streamCandidates(ctx *gin.Context, prefix, rest string, live bo
 	ext := path.Ext(file)
 	shown := strings.TrimSuffix(file, ext)
 	src, id := c.sourceOf(shown)
-	candidates := []candidate{{src, src.account.StreamURL(prefix, dir+id+ext)}}
+	candidates := []candidate{{src, src.account.StreamURL(prefix, dir+id+ext), src.name}}
 	if !live {
 		return candidates
 	}
 	for _, other := range c.liveFallbacks(ctx, shown) {
-		candidates = append(candidates, candidate{other.src, other.src.account.StreamURL(prefix, dir+other.id+ext)})
+		candidates = append(candidates, candidate{other.src, other.src.account.StreamURL(prefix, dir+other.id+ext), other.src.name})
 	}
 	return candidates
 }
@@ -561,7 +563,7 @@ func (c *Config) openFirst(candidates []candidate) opener {
 				why = failure(resp.StatusCode, nil, false)
 				_ = resp.Body.Close()
 			}
-			log.Printf("[iptv-proxy] %s failed (%s): trying %s", cand.src.name, why, order[i+1].src.name)
+			log.Printf("[iptv-proxy] %s failed (%s): trying %s", cand.name, why, order[i+1].name)
 		}
 		return nil, errors.New("no source for this stream")
 	}
@@ -570,6 +572,9 @@ func (c *Config) openFirst(candidates []candidate) opener {
 // sourceFull tells whether the proxy holds as many streams of a source as
 // it allows.
 func (c *Config) sourceFull(ctx context.Context, src *source) bool {
+	if src == nil {
+		return false
+	}
 	src.mu.Lock()
 	defer src.mu.Unlock()
 	if !src.asked {
@@ -606,6 +611,9 @@ func (c *Config) accountLimit(ctx context.Context, account xtream.Account) int {
 
 // hold counts a stream open at the source until its body is closed.
 func (s *source) hold(resp *http.Response) *http.Response {
+	if s == nil {
+		return resp
+	}
 	s.mu.Lock()
 	s.opened++
 	s.mu.Unlock()

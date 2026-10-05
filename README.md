@@ -479,6 +479,12 @@ When Plex asks for the guide, choose the XMLTV option and give
   `--hdhomerun-channel-regex`, `--hdhomerun-group-exclude-regex`,
   `--hdhomerun-channel-exclude-regex`), applied after them: your players
   keep every channel while the media server gets a few groups.
+- **Plex takes no more than about 400 channels** with a guide for a tuner:
+  past that, adding the DVR fails at its last step ("try again later"). The
+  tuner helps: a channel the provider lists several times with the same
+  guide id (another quality, a backup) is one tuner channel, the first of
+  the list; the others are its fallbacks, played when it fails. If Plex
+  still refuses, narrow the tuner's filters.
 - With an Xtream account, a channel's number is its id at the provider: it
   does not change when the provider reorders its list, so recordings stay on
   their channel. With an M3U playlist, it is the track's `tvg-chno`, else its

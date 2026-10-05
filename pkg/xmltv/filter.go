@@ -193,9 +193,14 @@ func writeAs(w *bufio.Writer, element []byte, startTag int, name, id string) err
 		_, err := w.WriteString(">" + label + "</channel>")
 		return err
 	}
-	_, _ = w.Write(element[end:startTag])
+	// The id comes after the channel's names: Plex shows the first one.
+	at := startTag
+	if i := bytes.LastIndex(element[startTag:], []byte("</display-name>")); i >= 0 {
+		at += i + len("</display-name>")
+	}
+	_, _ = w.Write(element[end:at])
 	_, _ = w.WriteString(label)
-	_, err := w.Write(element[startTag:])
+	_, err := w.Write(element[at:])
 	return err
 }
 
