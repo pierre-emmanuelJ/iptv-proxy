@@ -8,14 +8,16 @@ iptv-proxy is a reverse proxy for IPTV: give it an M3U/M3U8 playlist or an
 Xtream Codes account, and it serves the same channels, movies and series from
 your own address, with a user and a password you choose.
 
-Your players (TiviMate, IPTV Smarters, VLC, Kodi, Plex or Jellyfin through an
-M3U playlist...) talk to the proxy and never see the provider's address or
-credentials. Use it to share IPTV at home without handing out the provider's
-login, to put a provider behind your own domain, HTTPS or VPN, or to give
-every device one address that does not change.
+Your players (TiviMate, IPTV Smarters, VLC, Kodi...) talk to the proxy and
+never see the provider's address or credentials. Media servers (Plex,
+Jellyfin, Emby, Channels DVR) can see the live channels as an HDHomeRun TV
+tuner, with their guide. Use it to share IPTV at home without handing out the
+provider's login, to put a provider behind your own domain, HTTPS or VPN, or
+to give every device one address that does not change.
 
 It is one binary or one container, set up with a few flags or environment
-variables. There is no database and nothing to configure in a web interface.
+variables. There is no database and nothing to configure in a web interface;
+a read-only status page shows what is being watched.
 
 ## Quick start
 
@@ -96,7 +98,7 @@ Guide:    http://192.168.1.10:8080/xmltv.php?username=family&password=choose-a-p
 | Docker Hub | `pierro777/iptv-proxy` |
 | GitHub | `ghcr.io/pierre-emmanuelj/iptv-proxy` |
 
-Tags: `latest`, and for a given version `v4.0.0`, `v4.0` or `v4` (`v3` for the
+Tags: `latest`, and for a given version `v4.7.1`, `v4.7` or `v4` (`v3` for the
 3.x versions). Since v3.12.0 they work on amd64 and on ARM (Raspberry Pi, Apple silicon): Docker
 pulls the image of your machine. The `-amd64` and `-arm64` tags
 (`pierro777/iptv-proxy:latest-arm64`) name one architecture, as before.
@@ -138,7 +140,7 @@ docker compose up -d
 ```
 
 The [`docker-compose.yml`](docker-compose.yml) of this repository does the
-same, building the image from the sources.
+same with an Xtream Codes account, building the image from the sources.
 
 ### Binary
 
@@ -203,7 +205,8 @@ wins over the variable, and the variable over the file.
 | `--channel-regex` | `CHANNEL_REGEX` | | Keep only the live channels whose name matches this regular expression. |
 | `--group-exclude-regex` | `GROUP_EXCLUDE_REGEX` | | Leave out the live channels whose group matches this regular expression. |
 | `--channel-exclude-regex` | `CHANNEL_EXCLUDE_REGEX` | | Leave out the live channels whose name matches this regular expression. |
-| `--iptv-proxy-config` | `IPTV_PROXY_CONFIG` | `.iptv-proxy.yaml` in the home or current directory | YAML file holding the same options, named as the flags (`m3u-url: ...`), and the [users](#several-users). |
+| `--iptv-proxy-config` | `IPTV_PROXY_CONFIG` | `.iptv-proxy.yaml` in the home or current directory | YAML file holding the same options, named as the flags (`m3u-url: ...`), the [users](#several-users) and the [sources](#several-sources). |
+| `--version` | | | Prints the version and exits. |
 
 Good to know:
 
@@ -372,9 +375,10 @@ docker run -d --name iptv-proxy -p 8080:8080 \
   players the user's limit and the streams they watch. HLS segments are not
   counted: a live HLS channel is many short requests.
 - **Filters** (`group-regex`, `channel-regex`, `group-exclude-regex`,
-  `channel-exclude-regex`) apply to that user on top of the proxy's own. For
-  a user, they are more than what is shown: a live channel left out does not
-  play, even asked by its id. Movies and series are not filtered.
+  `channel-exclude-regex`) apply to that user on top of the proxy's own, with
+  the same rules (see [Filtering channels](#filtering-channels)): a live
+  channel left out does not play, even asked by its id. Movies and series are
+  not filtered.
 - Names must not be `hls`, `logo`, `live`, `movie`, `series`, `timeshift` or
   `play`: they are the first elements of the proxy's own addresses.
 - `--max-connections` (`MAX_CONNECTIONS`) sets the limit of the one user of
@@ -476,6 +480,10 @@ HDHomeRun device? Enter its network address manually": `192.168.1.10:5004`.
 When Plex asks for the guide, choose the XMLTV option and give
 `http://192.168.1.10:5004/guide.xml`.
 
+When Plex runs in Docker on the same machine, put both containers on one
+network and give Plex `iptv-proxy:5004` and `http://iptv-proxy:5004/guide.xml`
+instead: the tuner's port then needs no publishing at all.
+
 - **A tuner has no login**: anyone who reaches its port can watch. Keep it on
   your local network: do not publish it on the Internet or behind your
   reverse proxy. In exchange, nothing the tuner answers holds your proxy's or
@@ -500,9 +508,11 @@ When Plex asks for the guide, choose the XMLTV option and give
   how media servers match a guide to channels.
 - **Channel logos in Plex.** Plex's apps are served over HTTPS and refuse a
   logo at a plain `http://` address; many providers have only those. When
-  the proxy's own address is HTTPS (`--https`), the tuner's guide gives such
-  logos through the proxy, which fetches them. With `--proxy-logos`, all of
-  them come through it.
+  the proxy's own address is HTTPS (`--https`, see
+  [Behind a reverse proxy](#behind-a-reverse-proxy-with-https)), the tuner's
+  guide gives such logos through that address, where the Plex apps load them
+  and the proxy fetches them. With `--proxy-logos`, all of them come through
+  it.
 - The tuner announces as many tuners as your Xtream account allows
   connections, or, with several sources, as their accounts allow together
   (`--hdhomerun-tuners` to change it): a media server never opens more
@@ -584,9 +594,11 @@ The filters apply to:
 Movies and series are not filtered. In a `get.php` playlist that holds movies,
 the same rules apply to them, by their group and name.
 
-The filters choose what players are shown; they are not access control. A
-player that already knows the id of a channel left out can still play it
-through the Xtream API.
+The filters also hold for streams: a live channel left out does not play,
+even asked by its id, and the provider is not asked for it. A channel the
+provider just added plays as soon as it passes the filters: when a stream
+asks for an id the list does not have, the list is read again (at most once
+a minute).
 
 ## Live streams: one connection to the provider
 
