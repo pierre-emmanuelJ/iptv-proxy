@@ -654,6 +654,13 @@ for. Open an issue for a bug or an idea, or a discussion for a question.
 
 See the [changelog](CHANGELOG.md) for what each release brought.
 
+## Contributing
+
+Bug reports, ideas and pull requests are welcome: see
+[CONTRIBUTING.md](CONTRIBUTING.md). Questions go to the
+[discussions](https://github.com/pierre-emmanuelJ/iptv-proxy/discussions),
+vulnerabilities to [SECURITY.md](SECURITY.md).
+
 ## License
 
 [GPL-3.0](LICENSE).

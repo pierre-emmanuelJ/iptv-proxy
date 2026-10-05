@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: A question
+    url: https://github.com/pierre-emmanuelJ/iptv-proxy/discussions
+    about: How to set something up, whether it fits your case... Ask in the discussions.
