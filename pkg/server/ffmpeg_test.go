@@ -235,6 +235,63 @@ func TestFFmpegSetting(t *testing.T) {
 	}
 }
 
+// fakeFFmpeg is a script standing for ffmpeg: it writes the given number of
+// bytes and ends.
+func fakeFFmpeg(t *testing.T, bytes int) string {
+	t.Helper()
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("no shell")
+	}
+	script := filepath.Join(t.TempDir(), "ffmpeg")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nhead -c "+strconv.Itoa(bytes)+" /dev/zero\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return script
+}
+
+type closeCount struct {
+	io.Reader
+	closed int
+}
+
+func (c *closeCount) Close() error {
+	c.closed++
+	return nil
+}
+
+// The playlist's answer is closed once ffmpeg takes over: ffmpeg asks for
+// the playlist itself.
+func TestRemuxHLSClosesThePlaylist(t *testing.T) {
+	c := &Config{ProxyConfig: &config.ProxyConfig{FFmpeg: fakeFFmpeg(t, 4096)}}
+	if err := c.setupFFmpeg(); err != nil {
+		t.Fatal(err)
+	}
+	playlist := &closeCount{Reader: strings.NewReader("#EXTM3U\n#EXTINF:1,\nseg.ts\n")}
+	request, _ := http.NewRequest(http.MethodGet, "http://provider.example/live.m3u8", nil)
+	resp, err := c.remuxHLS(t.Context(), &http.Response{StatusCode: http.StatusOK, Body: playlist, Request: request}, http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if playlist.closed != 1 || resp.Header.Get("Content-Type") != "video/mp2t" || resp.ContentLength != -1 {
+		t.Errorf("playlist closed %d times, %+v", playlist.closed, resp)
+	}
+	if ts, _ := io.ReadAll(resp.Body); len(ts) != 4096 {
+		t.Errorf("%d bytes", len(ts))
+	}
+	_ = resp.Body.Close()
+}
+
+// ffmpeg must give two MPEG-TS packets for a stream to have started.
+func TestFFmpegTooShort(t *testing.T) {
+	c := &Config{ProxyConfig: &config.ProxyConfig{FFmpeg: fakeFFmpeg(t, 200)}}
+	if err := c.setupFFmpeg(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ffmpegTS(t.Context(), "http://provider.example/live.m3u8", ""); err == nil || !strings.Contains(err.Error(), "ffmpeg gave no stream") {
+		t.Errorf("error: %v", err)
+	}
+}
+
 func TestLastLines(t *testing.T) {
 	var l lastLines
 	_, _ = l.Write([]byte(strings.Repeat("a", keptBytes)))
