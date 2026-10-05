@@ -185,6 +185,77 @@ func TestTunerOwnFilters(t *testing.T) {
 	}
 }
 
+// A channel the provider has several times (the same guide id: another
+// quality, a backup) is one tuner channel, the first; the others are its
+// fallbacks. Plex takes no more than about 400 channels for a tuner.
+func TestTunerOneChannelPerGuide(t *testing.T) {
+	logs := captureLogs(t)
+	p := newProvider(t)
+	p.late.Store(true) // stream 4, "one.fr" too
+	tuner := tunerOf(t, p, nil)
+
+	var numbers []string
+	for _, ch := range lineupOf(t, tuner) {
+		numbers = append(numbers, ch.GuideNumber)
+	}
+	if strings.Join(numbers, ",") != "1,2,3" {
+		t.Errorf("lineup: %v", numbers)
+	}
+	if resp, stream := get(t, tuner+"/auto/v1"); resp.StatusCode != http.StatusOK || stream != "live-one" {
+		t.Errorf("channel 1: status %d, %q", resp.StatusCode, stream)
+	}
+	if p.count("/live/xuser/xpass/4.ts") != 0 {
+		t.Error("the fallback was opened while the channel played")
+	}
+	// the other channel of the guide id is not a tuner channel of its own
+	if resp, _ := get(t, tuner+"/auto/v4"); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("channel 4: status %d, want 404", resp.StatusCode)
+	}
+	_, guide := get(t, tuner+"/guide.xml")
+	if !strings.Contains(guide, `<channel id="1">`) || strings.Contains(guide, `"4"`) {
+		t.Errorf("guide:\n%s", guide)
+	}
+
+	p.liveDown.Store(true)
+	if resp, stream := get(t, tuner+"/auto/v1"); resp.StatusCode != http.StatusOK || stream != "live-late" {
+		t.Errorf("channel 1 down: status %d, %q", resp.StatusCode, stream)
+	}
+	if !strings.Contains(logs.String(), "stream 1 failed (HTTP 503): trying stream 4") {
+		t.Errorf("logs:\n%s", logs.String())
+	}
+	noProviderCredentials(t, "logs", logs.String())
+}
+
+// Tracks of a playlist with the same tvg-id are one channel too.
+func TestTunerM3UOneChannelPerGuide(t *testing.T) {
+	logs := captureLogs(t)
+	p := newProvider(t)
+	list := "#EXTM3U\n" +
+		"#EXTINF:-1 tvg-id=\"one.fr\",One\n" + p.URL + "/live/xuser/xpass/missing.ts\n" +
+		"#EXTINF:-1 tvg-id=\"one.fr\",One HD\n" + p.URL + "/stream/a.ts\n" +
+		"#EXTINF:-1,Two\n" + p.URL + "/stream/endless\n"
+	file := t.TempDir() + "/list.m3u"
+	if err := os.WriteFile(file, []byte(list), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tuner := tunerOf(t, p, func(c *config.ProxyConfig) {
+		c.XtreamBaseURL, c.XtreamUser, c.XtreamPassword = "", "", ""
+		c.RemoteURL, _ = url.Parse(file)
+	})
+	lineup := lineupOf(t, tuner)
+	if len(lineup) != 2 || lineup[0].GuideName != "One" || lineup[1].GuideName != "Two" {
+		t.Fatalf("lineup: %+v", lineup)
+	}
+	if resp, track := get(t, tuner+"/auto/v1"); resp.StatusCode != http.StatusOK || track != "track-a" {
+		t.Errorf("channel 1: status %d, %q", resp.StatusCode, track)
+	}
+	// a track's address may hold credentials: the logs name it by its place
+	if !strings.Contains(logs.String(), "address 1 of One failed (HTTP 404): trying address 2 of One") {
+		t.Errorf("logs:\n%s", logs.String())
+	}
+	noProviderCredentials(t, "logs", logs.String())
+}
+
 func TestTunerOwnFiltersInvalid(t *testing.T) {
 	_, err := NewServer(&config.ProxyConfig{
 		HostConfig:      &config.HostConfiguration{Hostname: "proxy.example", Port: 8080},
@@ -196,7 +267,8 @@ func TestTunerOwnFiltersInvalid(t *testing.T) {
 }
 
 // The guide names each channel by its tuner number, as media servers match
-// them; channels of no tuner channel are left out.
+// them, after its own name, which Plex shows; channels of no tuner channel
+// are left out.
 func TestTunerGuide(t *testing.T) {
 	p := newProvider(t)
 	tuner := tunerOf(t, p, nil)
@@ -204,7 +276,7 @@ func TestTunerGuide(t *testing.T) {
 	resp, guide := get(t, tuner+"/guide.xml")
 	want := `<?xml version="1.0" encoding="UTF-8"?>
 <tv generator-info-name="provider">
-  <channel id="1"><display-name>1</display-name><display-name>One</display-name></channel>
+  <channel id="1"><display-name>One</display-name><display-name>1</display-name></channel>
   <programme start="20251002200000 +0200" channel="1"><title>News</title><desc><![CDATA[<b>live</b>]]></desc></programme>
   </tv>
 `
@@ -259,7 +331,7 @@ func TestTunerM3U(t *testing.T) {
 	}
 
 	_, guide := get(t, tuner+"/guide.xml")
-	if !strings.Contains(guide, `<channel id="7"><display-name>7</display-name>`) || strings.Contains(guide, "sport.fr") || strings.Contains(guide, "one.fr") {
+	if !strings.Contains(guide, `<channel id="7"><display-name>One</display-name><display-name>7</display-name>`) || strings.Contains(guide, "sport.fr") || strings.Contains(guide, "one.fr") {
 		t.Errorf("guide:\n%s", guide)
 	}
 }

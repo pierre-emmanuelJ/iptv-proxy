@@ -1,5 +1,28 @@
 # Changelog
 
+## 4.5.0
+
+### Changed
+
+- **The HDHomeRun tuner lists a channel once per guide id.** A channel the
+  provider lists several times with the same guide id (another quality, a
+  backup) is one tuner channel, the first of the list; the others are its
+  fallbacks, played in turn when it fails. With an M3U playlist, the guide
+  id is the track's `tvg-id`. Channels without a guide id are all kept.
+
+### Fixed
+
+- **Adding the DVR in Plex failed at its last step** ("try again later")
+  with a tuner of many channels. Plex refuses the channel mapping of more
+  than about 400 channels; providers often list each channel in three or
+  four qualities. On the account this was found with, the tuner went from
+  565 channels (441 with a guide, for 200 guide ids) to 324, and its guide
+  from 9.7 MB to 3.3 MB.
+- **Plex showed the tuner's channels by number** ("634532") instead of their
+  name. The tuner's guide gives each channel its number as a name too, as
+  media servers match them; it now comes after the channel's own names, and
+  Plex shows the first.
+
 ## 4.4.0
 
 ### Added

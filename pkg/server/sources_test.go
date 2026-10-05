@@ -399,6 +399,7 @@ func TestSourcesPlaylist(t *testing.T) {
 
 func TestSourcesTuner(t *testing.T) {
 	p, q := newProvider(t), newProvider(t)
+	p.late.Store(true) // stream 4 of the first source, "one.fr" too
 	tuner := tunerOf(t, p, withSource(q))
 	var numbers []string
 	for _, ch := range lineupOf(t, tuner) {
@@ -410,6 +411,15 @@ func TestSourcesTuner(t *testing.T) {
 	}
 	if resp, body := get(t, tuner+"/auto/v100000005"); resp.StatusCode != http.StatusOK || body != "second-five" {
 		t.Errorf("channel of the second source: status %d, %q", resp.StatusCode, body)
+	}
+	// one.fr: the first source's channel, the second source's, then the
+	// first source's other one
+	p.liveDown.Store(true)
+	if _, body := get(t, tuner+"/auto/v1"); body != "second-one" {
+		t.Errorf("channel 1 down: %q", body)
+	}
+	if q.count("/live/second/pw+2/4.ts") != 0 || p.count("/live/xuser/xpass/4.ts") != 0 {
+		t.Error("a later fallback was opened")
 	}
 }
 

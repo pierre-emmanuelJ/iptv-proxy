@@ -80,19 +80,23 @@ func TestMap(t *testing.T) {
   <channel id="one.fr"><display-name>One</display-name></channel>
   <channel id='two.fr'/>
   <channel id="gone.fr"/>
+  <channel id="three.fr"><display-name>Three</display-name><display-name>Trois</display-name><icon src="3.png"/></channel>
   <programme start="1" channel="one.fr"><title>A</title></programme>
   <programme channel='two.fr' start="2"/>
   <programme channel="gone.fr" start="3"/>
 </tv>`
-	numbers := map[string][]string{"one.fr": {"101", "102"}, "two.fr": {"2 & \"b\""}}
+	numbers := map[string][]string{"one.fr": {"101", "102"}, "two.fr": {"2 & \"b\""}, "three.fr": {"3"}}
 	var out bytes.Buffer
 	if err := Map(&out, strings.NewReader(doc), func(c string) []string { return numbers[c] }); err != nil {
 		t.Fatal(err)
 	}
+	// the id is a name of the channel too, after its own: Plex shows the
+	// first, and names come before the icon
 	want := `<tv>
-  <channel id="101"><display-name>101</display-name><display-name>One</display-name></channel>
-<channel id="102"><display-name>102</display-name><display-name>One</display-name></channel>
+  <channel id="101"><display-name>One</display-name><display-name>101</display-name></channel>
+<channel id="102"><display-name>One</display-name><display-name>102</display-name></channel>
   <channel id='2 &amp; &#34;b&#34;'><display-name>2 &amp; &#34;b&#34;</display-name></channel>
+  <channel id="3"><display-name>Three</display-name><display-name>Trois</display-name><display-name>3</display-name><icon src="3.png"/></channel>
   <programme start="1" channel="101"><title>A</title></programme>
 <programme start="1" channel="102"><title>A</title></programme>
   <programme channel='2 &amp; &#34;b&#34;' start="2"/>

@@ -347,6 +347,10 @@ func newProvider(t *testing.T) *provider {
 		w.Header().Set("X-Got-Connection", r.Header.Get("Connection"))
 		fmt.Fprint(w, "live-one")
 	})
+	mux.HandleFunc("/live/xuser/xpass/4.ts", func(w http.ResponseWriter, r *http.Request) {
+		p.hit(r)
+		fmt.Fprint(w, "live-late")
+	})
 	mux.HandleFunc("/xuser/xpass/1", func(w http.ResponseWriter, r *http.Request) {
 		p.hit(r)
 		fmt.Fprint(w, "short-form")
