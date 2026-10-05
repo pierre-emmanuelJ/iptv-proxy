@@ -1,0 +1,44 @@
+name: Bug report
+description: Something does not work as the README says.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. The more of this you fill in, the faster it gets fixed.
+        **Do not paste credentials**: the proxy masks its own and the provider's in its logs, but check a log line before posting it, and replace any address of your provider by `provider.example`.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`iptv-proxy --version`, or the Docker tag you run (`pierro777/iptv-proxy:v4.7.0`)."
+    validations:
+      required: true
+  - type: checkboxes
+    id: mode
+    attributes:
+      label: How the proxy is used
+      options:
+        - label: an M3U playlist (`--m3u-url`)
+        - label: an Xtream Codes account
+        - label: "`--xtream-passthrough`"
+        - label: several sources (configuration file)
+        - label: the HDHomeRun tuner (`--hdhomerun-port`)
+  - type: input
+    id: client
+    attributes:
+      label: Player or media server
+      description: TiviMate, IPTV Smarters, VLC, Kodi, Plex, Jellyfin... and its version.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens, and what you expected
+      description: The steps that lead to it, if you know them.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log lines
+      description: The proxy's lines around the problem (`docker logs <container>`). Check them for credentials first.
+      render: text

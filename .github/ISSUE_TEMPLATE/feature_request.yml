@@ -1,0 +1,16 @@
+name: Idea
+description: Something the proxy could do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you need
+      description: What you are trying to do, with which player or provider. The need matters more than a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How it could work
+      description: Optional. Keep in mind the proxy aims to need no configuration beyond what it has.
