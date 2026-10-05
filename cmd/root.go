@@ -286,7 +286,7 @@ func init() {
 	rootCmd.Flags().String("hdhomerun-group-exclude-regex", "", "Leave out of the tuner the channels whose group matches this regular expression")
 	rootCmd.Flags().String("hdhomerun-channel-exclude-regex", "", "Leave out of the tuner the channels whose name matches this regular expression")
 	rootCmd.Flags().String("ffmpeg", "ffmpeg", "ffmpeg the HDHomeRun tuner turns HLS channels into MPEG-TS with, when it is found (the -ffmpeg images have it); \"none\" goes without")
-	rootCmd.Flags().Int("hdhomerun-tuners", 0, "Number of tuners the HDHomeRun tuner announces (default: the connections the Xtream account allows, else 2)")
+	rootCmd.Flags().Int("hdhomerun-tuners", 0, "Number of tuners the HDHomeRun tuner announces (default: the connections the Xtream account allows, or the sources together, else 2)")
 	rootCmd.Flags().Bool("proxy-logos", false, "Serve the logos and covers of playlists and of the Xtream API through the proxy, so that players reach no other host")
 	rootCmd.Flags().String("status-password", "", "Password of a read-only status page at /status (streams being watched, sources, tuner); no page without it")
 	rootCmd.Flags().Bool("no-stream-sharing", false, "Open one provider connection per client for a live stream, instead of sharing one between the clients watching it")

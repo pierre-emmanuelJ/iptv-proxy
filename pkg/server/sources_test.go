@@ -216,6 +216,27 @@ func TestSourcesFallbacksAreReadAgain(t *testing.T) {
 	}
 }
 
+// A source's limit is asked to its account once; a source whose limit is
+// not known is never full.
+func TestSourceLimit(t *testing.T) {
+	p := newProvider(t)
+	c := &Config{ProxyConfig: &config.ProxyConfig{}}
+	c.apiClient = http.DefaultClient
+	src := &source{name: "a", account: xtream.Account{BaseURL: p.URL, User: xUser, Password: xPass}}
+	for range 3 {
+		if n := c.sourceLimit(t.Context(), src); n != 2 {
+			t.Errorf("limit %d, want the account's 2", n)
+		}
+	}
+	if n := p.count("/player_api.php"); n != 1 {
+		t.Errorf("the account was asked %d times", n)
+	}
+	unknown := &source{name: "b", asked: true, opened: 3}
+	if c.sourceFull(t.Context(), unknown) {
+		t.Error("a source with no known limit is full")
+	}
+}
+
 func TestShownIDs(t *testing.T) {
 	for _, c := range []struct {
 		src      int
@@ -412,6 +433,10 @@ func TestSourcesTuner(t *testing.T) {
 	if resp, body := get(t, tuner+"/auto/v100000005"); resp.StatusCode != http.StatusOK || body != "second-five" {
 		t.Errorf("channel of the second source: status %d, %q", resp.StatusCode, body)
 	}
+	// as many tuners as the sources have connections: 2 and 1
+	if _, body := get(t, tuner+"/discover.json"); !strings.Contains(body, `"TunerCount":3`) {
+		t.Errorf("discover.json: %s", body)
+	}
 	// one.fr: the first source's channel, the second source's, then the
 	// first source's other one
 	p.liveDown.Store(true)
@@ -420,6 +445,23 @@ func TestSourcesTuner(t *testing.T) {
 	}
 	if q.count("/live/second/pw+2/4.ts") != 0 || p.count("/live/xuser/xpass/4.ts") != 0 {
 		t.Error("a later fallback was opened")
+	}
+}
+
+// A source's max-connections counts for the tuner too; a source whose
+// account does not answer counts as one.
+func TestSourcesTunerCount(t *testing.T) {
+	p, q := newProvider(t), newProvider(t)
+	tuner := tunerOf(t, p, func(c *config.ProxyConfig) {
+		withSource(q)(c)
+		c.Sources[0].MaxConnections = 5
+	})
+	if _, body := get(t, tuner+"/discover.json"); !strings.Contains(body, `"TunerCount":7`) {
+		t.Errorf("discover.json: %s", body)
+	}
+	q.down.Store(true)
+	if _, body := get(t, tunerOf(t, p, withSource(q))+"/discover.json"); !strings.Contains(body, `"TunerCount":3`) {
+		t.Errorf("a source down: %s", body)
 	}
 }
 

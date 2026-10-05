@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.7.1
+
+### Fixed
+
+- **The HDHomeRun tuner with several sources** announced the connections of
+  the first account only. It now announces those of every source together
+  (a source's `max-connections`, else what its account allows, one for an
+  account that does not say): a media server can watch as many channels at
+  once as the sources allow.
+
 ## 4.7.0
 
 ### Added

@@ -197,7 +197,7 @@ wins over the variable, and the variable over the file.
 | `--proxy-logos` | `PROXY_LOGOS` | `false` | Serve the logos and covers of playlists, of the Xtream API and of the guides through the proxy too, so that players reach no other host. |
 | `--hdhomerun-port` | `HDHOMERUN_PORT` | | Port of an HDHomeRun tuner for Plex, Emby, Jellyfin or Channels DVR. Local network only. See [Plex and other media servers](#plex-and-other-media-servers). |
 | `--hdhomerun-group-regex`, `--hdhomerun-channel-regex`, `--hdhomerun-group-exclude-regex`, `--hdhomerun-channel-exclude-regex` | `HDHOMERUN_GROUP_REGEX`... | | Filters of the tuner alone, applied after the proxy's: the media server gets fewer channels than your players. |
-| `--hdhomerun-tuners` | `HDHOMERUN_TUNERS` | the account's connections, else `2` | Number of tuners announced: how many channels a media server plays at once. |
+| `--hdhomerun-tuners` | `HDHOMERUN_TUNERS` | the account's connections (the sources' together), else `2` | Number of tuners announced: how many channels a media server plays at once. |
 | `--ffmpeg` | `FFMPEG` | `ffmpeg` | ffmpeg the HDHomeRun tuner turns HLS channels into MPEG-TS with, when it is found (the `-ffmpeg` images have it). `none` goes without. |
 | `--group-regex` | `GROUP_REGEX` | | Keep only the live channels whose group matches this regular expression. See [Filtering channels](#filtering-channels). |
 | `--channel-regex` | `CHANNEL_REGEX` | | Keep only the live channels whose name matches this regular expression. |
@@ -504,8 +504,9 @@ When Plex asks for the guide, choose the XMLTV option and give
   logos through the proxy, which fetches them. With `--proxy-logos`, all of
   them come through it.
 - The tuner announces as many tuners as your Xtream account allows
-  connections (`--hdhomerun-tuners` to change it): a media server never
-  opens more streams than that.
+  connections, or, with several sources, as their accounts allow together
+  (`--hdhomerun-tuners` to change it): a media server never opens more
+  streams than that.
 - Media servers expect MPEG-TS. With an Xtream account, the tuner asks the
   provider for MPEG-TS. A channel the provider has only as HLS (an M3U
   playlist of `.m3u8` addresses, or an account whose
