@@ -28,6 +28,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -114,10 +115,9 @@ func (c *Config) streamLiveFrom(ctx *gin.Context, key string, open opener) {
 			if !ok {
 				return // the provider is gone for good, or this client is too slow
 			}
-			if _, err := ctx.Writer.Write(chunk); err != nil {
+			if _, err := (flushWriter{ctx.Writer}).Write(chunk); err != nil {
 				return
 			}
-			ctx.Writer.Flush()
 		case <-gone:
 			return
 		}
@@ -279,6 +279,11 @@ func (c *Config) dropLeakingHeaders(header http.Header) {
 	}
 }
 
+// writeTimeout is how long a client has to take a chunk of a stream. A
+// player that stops reading without leaving would otherwise keep its
+// stream, and its place in its user's limit of streams, for good.
+var writeTimeout = time.Minute
+
 // flushWriter sends each chunk as it comes: a live stream is not held back
 // in the server's buffer.
 type flushWriter struct {
@@ -286,6 +291,7 @@ type flushWriter struct {
 }
 
 func (w flushWriter) Write(p []byte) (int, error) {
+	_ = http.NewResponseController(w.ResponseWriter).SetWriteDeadline(time.Now().Add(writeTimeout))
 	n, err := w.ResponseWriter.Write(p)
 	w.Flush()
 	return n, err

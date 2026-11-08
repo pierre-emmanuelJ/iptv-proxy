@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -212,6 +214,30 @@ func TestConnectionLimit(t *testing.T) {
 			t.Errorf("kids: status %d", status)
 		}
 	}
+}
+
+// A player that stops reading without leaving gives its place back: the
+// chunk it does not take times out.
+func TestStalledPlayerGivesItsPlaceBack(t *testing.T) {
+	d := writeTimeout
+	t.Cleanup(func() { writeTimeout = d }) // once the proxy below is closed
+	writeTimeout = 200 * time.Millisecond
+	base := proxy(t, newProvider(t), twoUsers)
+	u, _ := url.Parse(base)
+
+	conn, err := net.Dial("tcp", u.Host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close() // nolint: errcheck
+	fmt.Fprintf(conn, "GET /movie/family/fampass/flood.mkv HTTP/1.1\r\nHost: %s\r\n\r\n", u.Host)
+
+	// the player never reads; another device gets the place once it times out
+	eventually(t, "the stalled player's place given back", func() bool {
+		o, status := open(t, base+"/live/family/fampass/8.ts", "X-Forwarded-For", "10.0.0.9")
+		o.leave()
+		return status == http.StatusOK
+	})
 }
 
 func TestSlots(t *testing.T) {

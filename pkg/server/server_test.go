@@ -478,6 +478,15 @@ func newProvider(t *testing.T) *provider {
 	for _, path := range []string{"/live/xuser/xpass/8.ts", "/live/second/pw+2/8.ts", "/movie/xuser/xpass/endless.mkv", "/stream/endless", "/stream/endless.mp4"} {
 		mux.HandleFunc(path, p.endless)
 	}
+	// A file sent as fast as the client takes it.
+	mux.HandleFunc("/movie/xuser/xpass/flood.mkv", func(w http.ResponseWriter, r *http.Request) {
+		chunk := make([]byte, 64<<10)
+		for {
+			if _, err := w.Write(chunk); err != nil {
+				return
+			}
+		}
+	})
 	// A file being read: endless for the test's purpose, but with a length.
 	mux.HandleFunc("/live/xuser/xpass/sized.ts", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", "1073741824")
