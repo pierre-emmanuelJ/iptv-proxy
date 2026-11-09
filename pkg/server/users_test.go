@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -211,6 +213,48 @@ func TestConnectionLimit(t *testing.T) {
 		if _, status := open(t, base+"/live/kids/kidspass/1.ts", phone...); status != http.StatusOK {
 			t.Errorf("kids: status %d", status)
 		}
+	}
+}
+
+// A player that stops reading without leaving gives its place back: the
+// chunk it does not take times out. A file and a live channel alike.
+func TestStalledPlayerGivesItsPlaceBack(t *testing.T) {
+	d := writeTimeout
+	t.Cleanup(func() { writeTimeout = d }) // once the proxies below are closed
+	writeTimeout = 200 * time.Millisecond
+
+	for stream, upstream := range map[string]string{
+		"/movie/family/fampass/flood.mkv": "/movie/xuser/xpass/flood.mkv",
+		"/live/family/fampass/flood.ts":   "/live/xuser/xpass/flood.ts",
+	} {
+		t.Run(stream, func(t *testing.T) {
+			p := newProvider(t)
+			base := proxy(t, p, twoUsers)
+			u, _ := url.Parse(base)
+			phone := []string{"X-Forwarded-For", "10.0.0.9"}
+
+			conn, err := net.Dial("tcp", u.Host)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close() // nolint: errcheck
+			fmt.Fprintf(conn, "GET %s HTTP/1.1\r\nHost: %s\r\nX-Forwarded-For: 10.0.0.5\r\n\r\n", stream, u.Host)
+
+			// the player holds the place: the proxy asks the provider only
+			// once the place is taken
+			eventually(t, "the stalled player's stream opened", func() bool { return p.count(upstream) == 1 })
+			if o, status := open(t, base+"/live/family/fampass/8.ts", phone...); status != http.StatusForbidden {
+				o.leave()
+				t.Fatalf("another device while the player holds the place: status %d, want 403", status)
+			}
+
+			// it never reads; another device gets the place once it times out
+			eventually(t, "the stalled player's place given back", func() bool {
+				o, status := open(t, base+"/live/family/fampass/8.ts", phone...)
+				o.leave()
+				return status == http.StatusOK
+			})
+		})
 	}
 }
 
