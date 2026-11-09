@@ -132,7 +132,7 @@ type cachedM3U struct {
 
 // NewServer initialize a new server configuration
 func NewServer(config *config.ProxyConfig) (*Config, error) {
-	newTransport := func(headerTimeout time.Duration) *http.Transport {
+	newTransport := func(headerTimeout time.Duration, compression bool) *http.Transport {
 		return &http.Transport{
 			Proxy:                 http.ProxyFromEnvironment,
 			DialContext:           (&net.Dialer{Timeout: connectTimeout, KeepAlive: 30 * time.Second}).DialContext,
@@ -140,19 +140,21 @@ func NewServer(config *config.ProxyConfig) (*Config, error) {
 			ResponseHeaderTimeout: headerTimeout,
 			MaxIdleConnsPerHost:   16,
 			IdleConnTimeout:       90 * time.Second,
-			// Media is passed on as the provider sends it.
-			DisableCompression: true,
+			DisableCompression:    !compression,
 		}
 	}
-	transport := newTransport(streamHeaderTimeout)
 
 	c := &Config{
 		ProxyConfig:          config,
 		endpointAntiColision: strings.Trim(config.CustomId, "/"),
-		client:               &http.Client{Transport: transport},
-		apiClient:            &http.Client{Transport: newTransport(apiHeaderTimeout)},
-		m3uCache:             map[string]cachedM3U{},
-		lastGood:             newLastGood(),
+		// Media is passed on as the provider sends it.
+		client: &http.Client{Transport: newTransport(streamHeaderTimeout, false)},
+		// API answers, playlists and guides are read by the proxy: they are
+		// asked compressed and read uncompressed, and some providers
+		// compress them whatever the request asks.
+		apiClient: &http.Client{Transport: newTransport(apiHeaderTimeout, true)},
+		m3uCache:  map[string]cachedM3U{},
+		lastGood:  newLastGood(),
 	}
 	remote := ""
 	if config.RemoteURL != nil {
