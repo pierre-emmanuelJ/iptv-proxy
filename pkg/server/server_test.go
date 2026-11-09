@@ -70,6 +70,9 @@ type provider struct {
 	icons atomic.Bool
 	// hlsOnly makes the account serve live television as HLS only.
 	hlsOnly atomic.Bool
+	// gzipAPI makes the API answer gzip, whatever the request accepts, as
+	// some providers do.
+	gzipAPI atomic.Bool
 	// hlsDir is served at /hlsfiles/, and live channel 1 as HLS
 	// (/live/xuser/xpass/1.m3u8) redirects to its index.m3u8.
 	hlsDir string
@@ -577,9 +580,28 @@ func newProvider(t *testing.T) *provider {
 		http.NotFound(w, r)
 	})
 
-	p.Server = httptest.NewServer(mux)
+	p.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !p.gzipAPI.Load() || r.URL.Path != "/player_api.php" {
+			mux.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Content-Encoding", "gzip")
+		zw := gzip.NewWriter(w)
+		defer zw.Close() // nolint: errcheck
+		mux.ServeHTTP(gzipResponse{w, zw}, r)
+	}))
 	t.Cleanup(p.Close)
 	return p
+}
+
+// gzipResponse compresses what a handler writes.
+type gzipResponse struct {
+	http.ResponseWriter
+	zw *gzip.Writer
+}
+
+func (g gzipResponse) Write(b []byte) (int, error) {
+	return g.zw.Write(b)
 }
 
 // providerGuide is the provider's guide: two channels, their programmes,
@@ -765,6 +787,34 @@ func TestAPIAnswersArePassedOnAsTheyAre(t *testing.T) {
 	}
 	if q := p.query("/player_api.php"); !strings.Contains(q, "username="+xUser) || !strings.Contains(q, "stream_id=1") || strings.Contains(q, user+"&") {
 		t.Errorf("provider was asked %q", q)
+	}
+}
+
+// Some providers compress their API answers whatever the request accepts:
+// the proxy reads them, and a player gets them as if they were not.
+func TestCompressedAPIAnswers(t *testing.T) {
+	p := newProvider(t)
+	p.gzipAPI.Store(true)
+	base := proxy(t, p, nil)
+
+	// a player that takes no compression
+	plain := []string{"Accept-Encoding", "identity"}
+	resp, body := get(t, base+"/player_api.php?"+creds+"&action=get_live_categories", plain...)
+	if want := `[{"category_id":"10","category_name":"News","parent_id":0},{"category_id":"20","category_name":"Sport \"HD\"","parent_id":0}]`; resp.StatusCode != http.StatusOK || body != want {
+		t.Errorf("get_live_categories: status %d, body:\n%q\nwant:\n%s", resp.StatusCode, body, want)
+	}
+	if ce := resp.Header.Get("Content-Encoding"); ce != "" {
+		t.Errorf("get_live_categories: Content-Encoding %q on a plain answer", ce)
+	}
+
+	// answers the proxy rewrites
+	if _, body := get(t, base+"/player_api.php?"+creds, plain...); !strings.Contains(body, `"username":"me"`) || !strings.Contains(body, `"url":"http://proxy.example"`) {
+		t.Errorf("login answer not rewritten:\n%q", body)
+	}
+	_, body = get(t, base+"/player_api.php?"+creds+"&action=get_vod_info&vod_id=12", plain...)
+	noProviderCredentials(t, "get_vod_info", body)
+	if want := `"direct_source":"http:\/\/proxy.example:8080\/movie\/me\/secret\/12.mkv"`; !strings.Contains(body, want) {
+		t.Errorf("get_vod_info: want %s in:\n%q", want, body)
 	}
 }
 
