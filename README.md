@@ -165,6 +165,10 @@ GIN_MODE=release ./iptv-proxy \
 
 Quote the playlist address: it usually contains `?` and `&`.
 
+## One-Click Deploy
+
+[![Deploy on RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploylobe.svg)](https://repocloud.io/details/IPTV%20Proxy/)
+
 ## Options
 
 Every option is a flag, an environment variable (the flag's name in upper
